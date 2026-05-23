@@ -39,6 +39,13 @@ import { nb_4_bernoulli } from './nb-4-bernoulli.js';
 import { nb_5_text_classification } from './nb-5-text-classification.js';
 import { nb_6_laplace_smoothing } from './nb-6-laplace-smoothing.js';
 import { nb_7_spam_project } from './nb-7-spam-project.js';
+import { svm_1_math } from './svm-1-math.js';
+import { svm_2_kernel } from './svm-2-kernel.js';
+import { svm_3_classification } from './svm-3-classification.js';
+import { svm_4_svr } from './svm-4-svr.js';
+import { svm_5_multiclass } from './svm-5-multiclass.js';
+import { svm_6_tuning } from './svm-6-tuning.js';
+import { svm_7_project } from './svm-7-project.js';
 
 export const blogs = [
   lr_1_ki_keno_math,
@@ -82,4 +89,11 @@ export const blogs = [
   nb_5_text_classification,
   nb_6_laplace_smoothing,
   nb_7_spam_project,
+  svm_1_math,
+  svm_2_kernel,
+  svm_3_classification,
+  svm_4_svr,
+  svm_5_multiclass,
+  svm_6_tuning,
+  svm_7_project,
 ];

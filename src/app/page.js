@@ -9,6 +9,7 @@ const categoryColors = {
   'লজিস্টিক রিগ্রেশন': { badge: 'bg-violet-50 text-violet-700 border-violet-200', btn: 'bg-violet-600 text-white border-violet-600', btnOff: 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100' },
   'ডিসিশন ট্রি':        { badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', btn: 'bg-emerald-600 text-white border-emerald-600', btnOff: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' },
   'নেইভ বেজ':           { badge: 'bg-amber-50 text-amber-700 border-amber-200',   btn: 'bg-amber-500 text-white border-amber-500',   btnOff: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' },
+  'সাপোর্ট ভেক্টর মেশিন': { badge: 'bg-rose-50 text-rose-700 border-rose-200', btn: 'bg-rose-600 text-white border-rose-600', btnOff: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' },
 };
 
 const fallbackColors = {
