@@ -21,3 +21,15 @@ body {
   color: inherit;
   font-size: inherit;
 }
+
+/* mobile: make code blocks and tables scroll horizontally */
+.prose pre {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.prose table {
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
