@@ -10,6 +10,9 @@ const categoryColors = {
   'ডিসিশন ট্রি':        { badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', btn: 'bg-emerald-600 text-white border-emerald-600', btnOff: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' },
   'নেইভ বেজ':           { badge: 'bg-amber-50 text-amber-700 border-amber-200',   btn: 'bg-amber-500 text-white border-amber-500',   btnOff: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' },
   'সাপোর্ট ভেক্টর মেশিন': { badge: 'bg-rose-50 text-rose-700 border-rose-200', btn: 'bg-rose-600 text-white border-rose-600', btnOff: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' },
+  'কে-নিকটতম প্রতিবেশী':  { badge: 'bg-cyan-50 text-cyan-700 border-cyan-200',   btn: 'bg-cyan-600 text-white border-cyan-600',   btnOff: 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100' },
+  'ক্লাস্টারিং':           { badge: 'bg-teal-50 text-teal-700 border-teal-200',   btn: 'bg-teal-600 text-white border-teal-600',   btnOff: 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100' },
+  'নিউরাল নেটওয়ার্ক':     { badge: 'bg-purple-50 text-purple-700 border-purple-200', btn: 'bg-purple-600 text-white border-purple-600', btnOff: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100' },
 };
 
 const fallbackColors = {

@@ -46,6 +46,23 @@ import { svm_4_svr } from './svm-4-svr.js';
 import { svm_5_multiclass } from './svm-5-multiclass.js';
 import { svm_6_tuning } from './svm-6-tuning.js';
 import { svm_7_project } from './svm-7-project.js';
+import { knn_1_math } from './knn-1-math.js';
+import { knn_2_classification } from './knn-2-classification.js';
+import { knn_3_regression } from './knn-3-regression.js';
+import { knn_4_distance } from './knn-4-distance.js';
+import { knn_5_tuning } from './knn-5-tuning.js';
+import { cluster_1_kmeans } from './cluster-1-kmeans.js';
+import { cluster_2_dbscan } from './cluster-2-dbscan.js';
+import { cluster_3_hierarchical } from './cluster-3-hierarchical.js';
+import { cluster_4_evaluation } from './cluster-4-evaluation.js';
+import { cluster_5_project } from './cluster-5-project.js';
+import { nn_1_perceptron } from './nn-1-perceptron.js';
+import { nn_2_backprop } from './nn-2-backprop.js';
+import { nn_3_numpy } from './nn-3-numpy.js';
+import { nn_4_keras } from './nn-4-keras.js';
+import { nn_5_cnn } from './nn-5-cnn.js';
+import { nn_6_regularization } from './nn-6-regularization.js';
+import { nn_7_project } from './nn-7-project.js';
 
 export const blogs = [
   lr_1_ki_keno_math,
@@ -96,4 +113,21 @@ export const blogs = [
   svm_5_multiclass,
   svm_6_tuning,
   svm_7_project,
+  knn_1_math,
+  knn_2_classification,
+  knn_3_regression,
+  knn_4_distance,
+  knn_5_tuning,
+  cluster_1_kmeans,
+  cluster_2_dbscan,
+  cluster_3_hierarchical,
+  cluster_4_evaluation,
+  cluster_5_project,
+  nn_1_perceptron,
+  nn_2_backprop,
+  nn_3_numpy,
+  nn_4_keras,
+  nn_5_cnn,
+  nn_6_regularization,
+  nn_7_project,
 ];
