@@ -18,6 +18,12 @@ import { lr_17_missing_values } from './lr-17-missing-values.js';
 import { lr_18_logistic_regression } from './lr-18-logistic-regression.js';
 import { lr_19_tree_regression } from './lr-19-tree-regression.js';
 import { lr_20_xgboost } from './lr-20-xgboost.js';
+import { logit_1_math } from './logit-1-math.js';
+import { logit_2_python } from './logit-2-python.js';
+import { logit_3_multiclass } from './logit-3-multiclass.js';
+import { logit_4_eval_metrics } from './logit-4-eval-metrics.js';
+import { logit_5_imbalanced } from './logit-5-imbalanced.js';
+import { logit_6_project } from './logit-6-project.js';
 
 export const blogs = [
   lr_1_ki_keno_math,
@@ -40,4 +46,10 @@ export const blogs = [
   lr_18_logistic_regression,
   lr_19_tree_regression,
   lr_20_xgboost,
+  logit_1_math,
+  logit_2_python,
+  logit_3_multiclass,
+  logit_4_eval_metrics,
+  logit_5_imbalanced,
+  logit_6_project,
 ];
