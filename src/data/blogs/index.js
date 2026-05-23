@@ -24,6 +24,21 @@ import { logit_3_multiclass } from './logit-3-multiclass.js';
 import { logit_4_eval_metrics } from './logit-4-eval-metrics.js';
 import { logit_5_imbalanced } from './logit-5-imbalanced.js';
 import { logit_6_project } from './logit-6-project.js';
+import { dt_1_intro } from './dt-1-intro.js';
+import { dt_2_classification } from './dt-2-classification.js';
+import { dt_3_pruning } from './dt-3-pruning.js';
+import { dt_4_random_forest } from './dt-4-random-forest.js';
+import { dt_5_adaboost } from './dt-5-adaboost.js';
+import { dt_6_gradient_boosting } from './dt-6-gradient-boosting.js';
+import { dt_7_feature_importance } from './dt-7-feature-importance.js';
+import { dt_8_project } from './dt-8-project.js';
+import { nb_1_bayes_theorem } from './nb-1-bayes-theorem.js';
+import { nb_2_gaussian } from './nb-2-gaussian.js';
+import { nb_3_multinomial } from './nb-3-multinomial.js';
+import { nb_4_bernoulli } from './nb-4-bernoulli.js';
+import { nb_5_text_classification } from './nb-5-text-classification.js';
+import { nb_6_laplace_smoothing } from './nb-6-laplace-smoothing.js';
+import { nb_7_spam_project } from './nb-7-spam-project.js';
 
 export const blogs = [
   lr_1_ki_keno_math,
@@ -52,4 +67,19 @@ export const blogs = [
   logit_4_eval_metrics,
   logit_5_imbalanced,
   logit_6_project,
+  dt_1_intro,
+  dt_2_classification,
+  dt_3_pruning,
+  dt_4_random_forest,
+  dt_5_adaboost,
+  dt_6_gradient_boosting,
+  dt_7_feature_importance,
+  dt_8_project,
+  nb_1_bayes_theorem,
+  nb_2_gaussian,
+  nb_3_multinomial,
+  nb_4_bernoulli,
+  nb_5_text_classification,
+  nb_6_laplace_smoothing,
+  nb_7_spam_project,
 ];
