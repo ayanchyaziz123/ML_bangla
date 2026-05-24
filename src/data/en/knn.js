@@ -1348,4 +1348,149 @@ plt.show()</code></pre>
       </table>
     `,
   },
+  {
+    title: "End-to-End Project: Wine Quality Classification with KNN",
+    description: "Full ML pipeline on UCI Wine Quality dataset — EDA, optimal K selection, comparison with SVM/Random Forest/Gradient Boosting, imbalanced data strategies.",
+    date: "২৩ মে, ২০২৬",
+    category: "K-Nearest Neighbors",
+    readTime: 13,
+    slug: "knn-project-wine-classification",
+    content: `
+      <h3>1. Project Overview</h3>
+      <p>We use the UCI Wine Quality dataset to predict whether a red wine is "good" (quality ≥ 7) or "not good". This is a binary classification task on an imbalanced dataset.</p>
+      <table>
+        <thead><tr><th>Dataset Info</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Samples</td><td>1,599</td></tr>
+          <tr><td>Features</td><td>11 (acidity, pH, alcohol, sulphates…)</td></tr>
+          <tr><td>Good quality (≥7)</td><td>217 (13.6%)</td></tr>
+          <tr><td>Not good (&lt;7)</td><td>1,382 (86.4%)</td></tr>
+          <tr><td>Target</td><td>binary (imbalanced)</td></tr>
+        </tbody>
+      </table>
+
+      <h3>2. Data Loading & EDA</h3>
+      <pre><code>import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+url = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
+df  = pd.read_csv(url, sep=';')
+
+print(df.shape)
+print(df['quality'].value_counts().sort_index())
+
+df['good'] = (df['quality'] >= 7).astype(int)
+print(f"Good wine: {df['good'].sum()} ({df['good'].mean()*100:.1f}%)")
+
+corr = df.corr()['quality'].sort_values()
+plt.figure(figsize=(8, 5))
+corr.drop('quality').plot(kind='barh',
+    color=['crimson' if x < 0 else 'steelblue' for x in corr.drop('quality')])
+plt.title('Feature Correlation with Wine Quality')
+plt.axvline(0, color='black', lw=0.8)
+plt.tight_layout(); plt.show()</code></pre>
+
+      <h3>3. Preprocessing</h3>
+      <pre><code>X = df.drop(['quality', 'good'], axis=1).values
+y = df['good'].values
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y)
+
+# Scaling is critical for KNN — unscaled features distort distances
+scaler    = StandardScaler()
+X_train_s = scaler.fit_transform(X_train)
+X_test_s  = scaler.transform(X_test)</code></pre>
+
+      <h3>4. Finding Optimal K</h3>
+      <pre><code">from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import cross_val_score
+from sklearn.pipeline import Pipeline
+
+k_range  = range(1, 31)
+cv_scores = []
+for k in k_range:
+    pipe = Pipeline([('s', StandardScaler()),
+                     ('m', KNeighborsClassifier(n_neighbors=k, weights='distance'))])
+    cv_scores.append(cross_val_score(pipe, X_train, y_train, cv=5, scoring='f1').mean())
+
+best_k = k_range[np.argmax(cv_scores)]
+print(f"Best K: {best_k},  CV F1: {max(cv_scores):.4f}")
+
+plt.figure(figsize=(9, 4))
+plt.plot(k_range, cv_scores, 'o-', color='steelblue')
+plt.axvline(best_k, color='crimson', ls='--', label=f'Best K={best_k}')
+plt.xlabel('K'); plt.ylabel('CV F1 Score')
+plt.title('K vs Cross-Validated F1')
+plt.legend(); plt.grid(alpha=0.3); plt.show()</code></pre>
+
+      <h3>5. Model Comparison</h3>
+      <pre><code">from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import f1_score, roc_auc_score, accuracy_score
+
+models = {
+    f'KNN (K={best_k})':   KNeighborsClassifier(n_neighbors=best_k, weights='distance'),
+    'SVM (RBF)':           SVC(C=10, gamma='scale', probability=True, random_state=42),
+    'Random Forest':       RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1),
+    'Gradient Boosting':   GradientBoostingClassifier(n_estimators=100, random_state=42),
+    'Logistic Regression': LogisticRegression(C=1.0, max_iter=1000),
+}
+
+results = {}
+for name, model in models.items():
+    pipe = Pipeline([('scaler', StandardScaler()), ('model', model)])
+    pipe.fit(X_train, y_train)
+    y_pred = pipe.predict(X_test)
+    try:    y_prob = pipe.predict_proba(X_test)[:, 1]
+    except: y_prob = pipe.decision_function(X_test)
+    results[name] = {
+        'CV F1':        cross_val_score(pipe, X, y, cv=5, scoring='f1').mean(),
+        'Test Accuracy': accuracy_score(y_test, y_pred),
+        'Test F1':       f1_score(y_test, y_pred),
+        'ROC-AUC':       roc_auc_score(y_test, y_prob),
+    }
+
+print(pd.DataFrame(results).T.sort_values('ROC-AUC', ascending=False).round(4))</code></pre>
+
+      <h3>6. Final Evaluation</h3>
+      <pre><code">from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay, roc_curve
+
+best_pipe = Pipeline([
+    ('scaler', StandardScaler()),
+    ('model',  KNeighborsClassifier(n_neighbors=best_k, weights='distance')),
+])
+best_pipe.fit(X_train, y_train)
+y_pred = best_pipe.predict(X_test)
+y_prob = best_pipe.predict_proba(X_test)[:, 1]
+
+print(classification_report(y_test, y_pred, target_names=['Not Good', 'Good']))
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+cm = confusion_matrix(y_test, y_pred)
+ConfusionMatrixDisplay(cm, display_labels=['Not Good','Good']).plot(ax=axes[0])
+fpr, tpr, _ = roc_curve(y_test, y_prob)
+axes[1].plot(fpr, tpr, lw=2, label=f'AUC={roc_auc_score(y_test, y_prob):.3f}')
+axes[1].plot([0,1],[0,1],'k--'); axes[1].legend()
+plt.tight_layout(); plt.show()</code></pre>
+
+      <h3>Summary</h3>
+      <table>
+        <thead><tr><th>Model</th><th>Strengths</th><th>Weaknesses</th><th>Wine dataset</th></tr></thead>
+        <tbody>
+          <tr><td>KNN</td><td>Simple, non-parametric</td><td>Slow predict, no class_weight</td><td>Good with proper K + scaling</td></tr>
+          <tr><td>SVM (RBF)</td><td>High-margin, robust</td><td>Slow on large data</td><td>Good</td></tr>
+          <tr><td>Random Forest</td><td>class_weight, feature importance</td><td>Black box</td><td>Best for imbalanced</td></tr>
+          <tr><td>Gradient Boosting</td><td>Most accurate</td><td>Slow training</td><td>Best overall</td></tr>
+          <tr><td>Logistic Regression</td><td>Interpretable, fast</td><td>Linear boundary</td><td>Good baseline</td></tr>
+        </tbody>
+      </table>
+    `,
+  },
 ];

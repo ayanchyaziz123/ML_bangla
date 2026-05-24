@@ -932,4 +932,98 @@ for segment, strategy in insights.items():
       </p>
     `,
   },
+  {
+    title: "Gaussian Mixture Models (GMM): Soft Clustering & Probability",
+    description: "Go beyond K-Means with GMM's probabilistic soft clustering — EM algorithm, covariance types, BIC/AIC for component selection, and anomaly detection.",
+    date: "২৩ মে, ২০২৬",
+    category: "Clustering",
+    readTime: 11,
+    slug: "clustering-gmm",
+    content: `
+      <h3>1. K-Means Limitations & GMM Intuition</h3>
+      <p>K-Means does a <strong>hard assignment</strong> — every point belongs 100% to one cluster. GMM assigns each point a <strong>probability</strong> of belonging to each cluster — this is <em>soft clustering</em>.</p>
+      <pre><code># GMM assumes data comes from a mixture of k Gaussian distributions:
+# P(x) = sum_k  pi_k * N(x | mu_k, Sigma_k)
+# pi_k = mixing weight, mu_k = mean, Sigma_k = covariance</code></pre>
+
+      <h3>2. EM Algorithm</h3>
+      <table>
+        <thead><tr><th>Step</th><th>What it does</th><th>K-Means analogy</th></tr></thead>
+        <tbody>
+          <tr><td><strong>E-step</strong></td><td>Compute soft responsibility r(i,k) for each point/component</td><td>Assignment step</td></tr>
+          <tr><td><strong>M-step</strong></td><td>Update mu_k, Sigma_k, pi_k via weighted responsibilities</td><td>Centroid update</td></tr>
+          <tr><td><strong>Convergence</strong></td><td>Log-likelihood stops increasing</td><td>Centroids stabilize</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3. Covariance Types</h3>
+      <pre><code>from sklearn.mixture import GaussianMixture
+from sklearn.datasets import make_blobs
+import matplotlib.pyplot as plt
+
+X, _ = make_blobs(n_samples=400, centers=4, cluster_std=0.8, random_state=42)
+
+cov_types = ['full', 'tied', 'diag', 'spherical']
+fig, axes  = plt.subplots(1, 4, figsize=(16, 4))
+for ax, cov in zip(axes, cov_types):
+    gmm    = GaussianMixture(n_components=4, covariance_type=cov, random_state=42)
+    labels = gmm.fit_predict(X)
+    ax.scatter(X[:,0], X[:,1], c=labels, cmap='tab10', s=20, alpha=0.7)
+    ax.set_title(f'{cov} | BIC={gmm.bic(X):.0f}', fontsize=9); ax.axis('off')
+plt.tight_layout(); plt.show()</code></pre>
+      <table>
+        <thead><tr><th>Covariance Type</th><th>Shape</th><th>When to Use</th></tr></thead>
+        <tbody>
+          <tr><td>full</td><td>Any ellipse</td><td>Clusters have different shapes</td></tr>
+          <tr><td>tied</td><td>Same ellipse for all</td><td>Same shape, different sizes</td></tr>
+          <tr><td>diag</td><td>Axis-aligned ellipse</td><td>Uncorrelated features</td></tr>
+          <tr><td>spherical</td><td>Circular (like K-Means)</td><td>Simple spherical clusters</td></tr>
+        </tbody>
+      </table>
+
+      <h3>4. BIC & AIC for Component Selection</h3>
+      <pre><code">import numpy as np
+n_range = range(1, 11)
+bic_scores, aic_scores = [], []
+for n in n_range:
+    gmm = GaussianMixture(n_components=n, covariance_type='full', random_state=42, n_init=3)
+    gmm.fit(X)
+    bic_scores.append(gmm.bic(X))
+    aic_scores.append(gmm.aic(X))
+
+best_n = n_range[np.argmin(bic_scores)]
+print(f"Best components (BIC): {best_n}")
+
+plt.figure(figsize=(8, 4))
+plt.plot(n_range, bic_scores, 'o-', label='BIC')
+plt.plot(n_range, aic_scores, 's-', label='AIC')
+plt.axvline(best_n, color='crimson', ls='--', label=f'Best n={best_n}')
+plt.xlabel('Components'); plt.ylabel('Score')
+plt.legend(); plt.grid(alpha=0.3); plt.show()</code></pre>
+
+      <h3>5. Soft Probabilities & Anomaly Detection</h3>
+      <pre><code">gmm = GaussianMixture(n_components=4, covariance_type='full', random_state=42).fit(X)
+
+soft_probs = gmm.predict_proba(X)   # shape: (n_samples, n_components)
+for i in range(3):
+    print(f"Point {i}: {[f'{p:.2f}' for p in soft_probs[i]]} → cluster {gmm.predict(X)[i]}")
+
+# Anomaly detection: low log-likelihood = outlier
+log_prob  = gmm.score_samples(X)
+anomalies = X[log_prob < np.percentile(log_prob, 5)]
+print(f"Potential anomalies: {len(anomalies)}")</code></pre>
+
+      <h3>Summary: GMM vs K-Means</h3>
+      <table>
+        <thead><tr><th>Aspect</th><th>K-Means</th><th>GMM</th></tr></thead>
+        <tbody>
+          <tr><td>Assignment</td><td>Hard (0 or 1)</td><td>Soft (probability)</td></tr>
+          <tr><td>Cluster shape</td><td>Spherical only</td><td>Elliptical (via covariance)</td></tr>
+          <tr><td>Model selection</td><td>Elbow / Silhouette</td><td>BIC / AIC</td></tr>
+          <tr><td>Anomaly detection</td><td>Centroid distance</td><td>Log-likelihood (better)</td></tr>
+          <tr><td>Use when</td><td>Simple spherical clusters</td><td>Overlapping, need probabilities</td></tr>
+        </tbody>
+      </table>
+    `,
+  },
 ];

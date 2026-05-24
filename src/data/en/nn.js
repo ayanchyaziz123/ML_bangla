@@ -1115,4 +1115,260 @@ print(classification_report(y_test, y_pred, target_names=CLASS_NAMES))
       <p>This series covered the full journey from perceptron to a complete deep learning pipeline. The next series will explore Recurrent Neural Networks (RNN/LSTM) and Natural Language Processing.</p>
     `,
   },
+  {
+    title: "RNN & LSTM: Sequential Data and Time Series",
+    description: "Recurrent Neural Networks for sequence data — hidden state mechanics, vanishing gradient problem, LSTM gates (forget/input/output), GRU, Keras time series prediction and IMDB sentiment analysis.",
+    date: "২৩ মে, ২০২৬",
+    category: "Neural Network",
+    readTime: 13,
+    slug: "nn-rnn-lstm",
+    content: `
+      <h3>1. Why Standard NNs Fail on Sequential Data</h3>
+      <p>Standard neural networks process each input independently — they have no memory of previous inputs. Text, time series, audio — these require understanding <strong>order and context</strong>.</p>
+      <pre><code># RNN solution: hidden state h_t carries information across time steps
+#
+# h_t = tanh(W_h * h_{t-1} + W_x * x_t + b)
+# y_t = W_y * h_t + b_y
+#
+# x_t      = input at time t
+# h_t      = hidden state at time t (the "memory")
+# h_{t-1}  = previous hidden state</code></pre>
+      <table>
+        <thead><tr><th>Data Type</th><th>Examples</th><th>Sequence</th></tr></thead>
+        <tbody>
+          <tr><td>Time Series</td><td>Stock price, weather, sensors</td><td>Hours/days/minutes</td></tr>
+          <tr><td>Text (NLP)</td><td>Sentiment, translation</td><td>Word/character sequence</td></tr>
+          <tr><td>Audio</td><td>Speech recognition</td><td>Time frames</td></tr>
+        </tbody>
+      </table>
+
+      <h3>2. Vanishing Gradient Problem</h3>
+      <pre><code># In long sequences, gradients shrink toward zero during backpropagation
+# Early time steps get almost no gradient signal — can't learn long-range dependencies
+#
+# dL/dW = dL/dh_T * dh_T/dh_{T-1} * ... * dh_2/dh_1 * dh_1/dW
+# Each dh_t/dh_{t-1} < 1  →  product approaches 0 (vanishing)
+# Each dh_t/dh_{t-1} > 1  →  product approaches inf (exploding)
+#
+# Solution: LSTM — designed specifically to remember long-term dependencies</code></pre>
+
+      <h3>3. LSTM Gates</h3>
+      <pre><code># LSTM has two states: cell state c_t (long-term) + hidden state h_t (short-term)
+# Three gates control the information flow:
+#
+# 1. Forget Gate: what to discard from cell state?
+#    f_t = sigmoid(W_f * [h_{t-1}, x_t] + b_f)   0=forget, 1=keep
+#
+# 2. Input Gate: what new info to store?
+#    i_t  = sigmoid(W_i * [h_{t-1}, x_t] + b_i)
+#    c̃_t = tanh(W_c * [h_{t-1}, x_t] + b_c)
+#    c_t  = f_t * c_{t-1} + i_t * c̃_t
+#
+# 3. Output Gate: what to output?
+#    o_t = sigmoid(W_o * [h_{t-1}, x_t] + b_o)
+#    h_t = o_t * tanh(c_t)</code></pre>
+      <table>
+        <thead><tr><th>Model</th><th>Gates</th><th>Long-term Memory</th><th>Speed</th></tr></thead>
+        <tbody>
+          <tr><td>RNN</td><td>None</td><td>Weak</td><td>Fast</td></tr>
+          <tr><td>LSTM</td><td>3 (forget, input, output)</td><td>Strong</td><td>Slow</td></tr>
+          <tr><td>GRU</td><td>2 (reset, update)</td><td>Good</td><td>Medium</td></tr>
+        </tbody>
+      </table>
+
+      <h3>4. Keras LSTM — Time Series Prediction</h3>
+      <pre><code">import numpy as np, matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow import keras
+
+t      = np.linspace(0, 100, 1000)
+series = np.sin(0.1 * t) + 0.1 * np.random.randn(1000)
+
+def create_sequences(data, seq_len=20):
+    X, y = [], []
+    for i in range(len(data) - seq_len):
+        X.append(data[i:i+seq_len]); y.append(data[i+seq_len])
+    return np.array(X), np.array(y)
+
+X, y   = create_sequences(series, 20)
+X      = X.reshape(*X.shape, 1)
+split  = int(len(X) * 0.8)
+X_tr, X_te, y_tr, y_te = X[:split], X[split:], y[:split], y[split:]
+
+model = keras.Sequential([
+    keras.layers.LSTM(64, return_sequences=True, input_shape=(20, 1)),
+    keras.layers.LSTM(32),
+    keras.layers.Dense(16, activation='relu'),
+    keras.layers.Dense(1),
+])
+model.compile(optimizer='adam', loss='mse')
+model.fit(X_tr, y_tr, epochs=30, batch_size=32, validation_split=0.2,
+          callbacks=[keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True)])
+
+y_pred = model.predict(X_te).flatten()
+print(f"Test MSE: {np.mean((y_te - y_pred)**2):.4f}")</code></pre>
+
+      <h3>5. Text Classification with LSTM</h3>
+      <pre><code">from tensorflow import keras
+
+(X_train, y_train), (X_test, y_test) = keras.datasets.imdb.load_data(num_words=10000)
+X_train = keras.preprocessing.sequence.pad_sequences(X_train, maxlen=200)
+X_test  = keras.preprocessing.sequence.pad_sequences(X_test,  maxlen=200)
+
+model = keras.Sequential([
+    keras.layers.Embedding(10000, 64, input_length=200),
+    keras.layers.LSTM(64, dropout=0.2),
+    keras.layers.Dense(32, activation='relu'),
+    keras.layers.Dropout(0.3),
+    keras.layers.Dense(1, activation='sigmoid'),
+])
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model.fit(X_train, y_train, epochs=5, batch_size=128, validation_split=0.2)
+_, acc = model.evaluate(X_test, y_test, verbose=0)
+print(f"Test Accuracy: {acc:.4f}")</code></pre>
+
+      <h3>Summary</h3>
+      <table>
+        <thead><tr><th>Topic</th><th>Key Point</th></tr></thead>
+        <tbody>
+          <tr><td>RNN</td><td>Hidden state carries sequential memory — but struggles with long sequences</td></tr>
+          <tr><td>Vanishing Gradient</td><td>Gradients fade over long sequences — solved by LSTM/GRU</td></tr>
+          <tr><td>LSTM</td><td>Cell state + 3 gates = strong long-term dependency learning</td></tr>
+          <tr><td>GRU</td><td>2 gates, faster than LSTM, nearly equal performance</td></tr>
+          <tr><td>return_sequences=True</td><td>Required in first layer when stacking LSTM layers</td></tr>
+          <tr><td>Embedding layer</td><td>Maps words to dense vectors for text classification</td></tr>
+        </tbody>
+      </table>
+    `,
+  },
+  {
+    title: "Transfer Learning: Fast Image Classification with Pre-trained Models",
+    description: "Use ImageNet pre-trained VGG16 and MobileNetV2 for feature extraction and fine-tuning — achieve high accuracy with minimal data using Keras applications and data augmentation.",
+    date: "২৩ মে, ২০২৬",
+    category: "Neural Network",
+    readTime: 12,
+    slug: "nn-transfer-learning",
+    content: `
+      <h3>1. What is Transfer Learning & Why Use It</h3>
+      <p>A model pre-trained on ImageNet (1.2M images, 1000 classes) already knows edges, textures, and shapes. Transfer learning <strong>reuses those learned features</strong> for a new task — no need to learn from scratch.</p>
+      <pre><code># Two approaches:
+#
+# 1. Feature Extraction (Frozen Base):
+#    - Freeze all pre-trained weights
+#    - Train only new top layers
+#    - Best for small datasets
+#
+# 2. Fine-Tuning (Partial Unfreeze):
+#    - Unfreeze last few layers of base model
+#    - Re-train entire model at very low learning rate
+#    - Better accuracy when you have more data</code></pre>
+      <table>
+        <thead><tr><th>Model</th><th>ImageNet Acc</th><th>Parameters</th><th>Speed</th><th>Best For</th></tr></thead>
+        <tbody>
+          <tr><td>VGG16</td><td>92.7%</td><td>138M</td><td>Slow</td><td>Research, feature extraction</td></tr>
+          <tr><td>ResNet50</td><td>93.0%</td><td>25.6M</td><td>Medium</td><td>General purpose</td></tr>
+          <tr><td>MobileNetV2</td><td>91.0%</td><td>3.4M</td><td>Fast</td><td>Mobile, edge devices</td></tr>
+          <tr><td>EfficientNetB0</td><td>93.3%</td><td>5.3M</td><td>Fast</td><td>Best efficiency</td></tr>
+        </tbody>
+      </table>
+
+      <h3>2. Feature Extraction — Frozen Base</h3>
+      <pre><code">import tensorflow as tf
+from tensorflow import keras
+
+(X_train, y_train), (X_test, y_test) = keras.datasets.cifar10.load_data()
+X_train = X_train.astype('float32') / 255.0
+X_test  = X_test.astype('float32')  / 255.0
+
+base_model = keras.applications.MobileNetV2(
+    input_shape=(32, 32, 3),
+    include_top=False,    # drop ImageNet classifier head
+    weights='imagenet',   # pre-trained weights
+)
+base_model.trainable = False   # freeze all layers
+
+model = keras.Sequential([
+    base_model,
+    keras.layers.GlobalAveragePooling2D(),  # feature map → vector
+    keras.layers.Dense(256, activation='relu'),
+    keras.layers.Dropout(0.3),
+    keras.layers.Dense(10, activation='softmax'),  # 10 CIFAR classes
+])
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+history1 = model.fit(X_train, y_train, epochs=5, batch_size=64,
+                     validation_data=(X_test, y_test))
+print(f"Feature extraction accuracy: {max(history1.history['val_accuracy']):.4f}")</code></pre>
+
+      <h3>3. Fine-Tuning</h3>
+      <pre><code">base_model.trainable = True
+# Freeze all but the last 30 layers
+for layer in base_model.layers[:-30]:
+    layer.trainable = False
+
+# Very low learning rate — don't destroy pre-trained features
+model.compile(optimizer=keras.optimizers.Adam(learning_rate=1e-5),
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+
+history2 = model.fit(
+    X_train, y_train, epochs=10, batch_size=64,
+    validation_data=(X_test, y_test),
+    callbacks=[keras.callbacks.EarlyStopping(patience=3, restore_best_weights=True)],
+)
+print(f"Fine-tuned accuracy: {max(history2.history['val_accuracy']):.4f}")</code></pre>
+
+      <h3>4. Data Augmentation</h3>
+      <pre><code">data_augmentation = keras.Sequential([
+    keras.layers.RandomFlip("horizontal"),
+    keras.layers.RandomRotation(0.1),
+    keras.layers.RandomZoom(0.1),
+    keras.layers.RandomContrast(0.1),
+])
+
+# Add augmentation as first layer in the model
+aug_model = keras.Sequential([
+    data_augmentation,
+    keras.applications.MobileNetV2(input_shape=(32,32,3),
+                                   include_top=False, weights='imagenet'),
+    keras.layers.GlobalAveragePooling2D(),
+    keras.layers.Dense(256, activation='relu'),
+    keras.layers.Dropout(0.4),
+    keras.layers.Dense(10, activation='softmax'),
+])
+aug_model.layers[1].trainable = False  # freeze base</code></pre>
+
+      <h3>5. Scratch CNN vs Transfer Learning</h3>
+      <pre><code">scratch = keras.Sequential([
+    keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(32,32,3)),
+    keras.layers.MaxPooling2D(),
+    keras.layers.Conv2D(64, (3,3), activation='relu'),
+    keras.layers.MaxPooling2D(),
+    keras.layers.Flatten(),
+    keras.layers.Dense(128, activation='relu'),
+    keras.layers.Dense(10, activation='softmax'),
+])
+scratch.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+h_scratch = scratch.fit(X_train, y_train, epochs=10, batch_size=64,
+                        validation_data=(X_test, y_test), verbose=0)
+
+print(f"Scratch CNN:          {max(h_scratch.history['val_accuracy']):.4f}")
+print(f"Feature Extraction:   {max(history1.history['val_accuracy']):.4f}")
+print(f"Fine-Tuned:           {max(history2.history['val_accuracy']):.4f}")</code></pre>
+
+      <h3>Summary</h3>
+      <table>
+        <thead><tr><th>Topic</th><th>Key Point</th></tr></thead>
+        <tbody>
+          <tr><td>Feature Extraction</td><td>Freeze base, train only top layers — fast, works with little data</td></tr>
+          <tr><td>Fine-Tuning</td><td>Partially unfreeze base at low lr — better accuracy, needs more data</td></tr>
+          <tr><td>include_top=False</td><td>Drop the 1000-class head, add your own output layer</td></tr>
+          <tr><td>GlobalAveragePooling2D</td><td>Better than Flatten — less overfitting</td></tr>
+          <tr><td>Data Augmentation</td><td>Essential with small datasets — adds variation without new images</td></tr>
+          <tr><td>MobileNetV2</td><td>Best default choice for production/mobile — small, fast, accurate</td></tr>
+        </tbody>
+      </table>
+    `,
+  },
 ];

@@ -47,6 +47,10 @@ import { svm_5_multiclass } from './svm-5-multiclass.js';
 import { svm_6_tuning } from './svm-6-tuning.js';
 import { svm_7_project } from './svm-7-project.js';
 import { knn_1_math } from './knn-1-math.js';
+import { knn_6_project } from './knn-6-project.js';
+import { cluster_6_gmm } from './cluster-6-gmm.js';
+import { nn_8_rnn_lstm } from './nn-8-rnn-lstm.js';
+import { nn_9_transfer_learning } from './nn-9-transfer-learning.js';
 import { knn_2_classification } from './knn-2-classification.js';
 import { knn_3_regression } from './knn-3-regression.js';
 import { knn_4_distance } from './knn-4-distance.js';
@@ -130,4 +134,8 @@ export const blogs = [
   nn_5_cnn,
   nn_6_regularization,
   nn_7_project,
+  knn_6_project,
+  cluster_6_gmm,
+  nn_8_rnn_lstm,
+  nn_9_transfer_learning,
 ];
