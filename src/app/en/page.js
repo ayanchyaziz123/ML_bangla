@@ -19,7 +19,20 @@ const categoryColors = {
   'Support Vector Machine': { badge: 'bg-rose-50 text-rose-700 border-rose-200', btn: 'bg-rose-600 text-white border-rose-600', btnOff: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' },
   'K-Nearest Neighbors':    { badge: 'bg-cyan-50 text-cyan-700 border-cyan-200',   btn: 'bg-cyan-600 text-white border-cyan-600',   btnOff: 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100' },
   'Clustering':             { badge: 'bg-teal-50 text-teal-700 border-teal-200',   btn: 'bg-teal-600 text-white border-teal-600',   btnOff: 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100' },
-  'Neural Network':         { badge: 'bg-purple-50 text-purple-700 border-purple-200', btn: 'bg-purple-600 text-white border-purple-600', btnOff: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100' },
+  'Neural Network':              { badge: 'bg-purple-50 text-purple-700 border-purple-200', btn: 'bg-purple-600 text-white border-purple-600', btnOff: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100' },
+  'Convolutional Neural Network': { badge: 'bg-indigo-50 text-indigo-700 border-indigo-200', btn: 'bg-indigo-600 text-white border-indigo-600', btnOff: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' },
+  'Graph Neural Network':         { badge: 'bg-orange-50 text-orange-700 border-orange-200', btn: 'bg-orange-600 text-white border-orange-600', btnOff: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100' },
+  'Transformers':                    { badge: 'bg-pink-50 text-pink-700 border-pink-200',     btn: 'bg-pink-600 text-white border-pink-600',     btnOff: 'bg-pink-50 text-pink-700 border-pink-200 hover:bg-pink-100' },
+  'Dimensionality Reduction':        { badge: 'bg-lime-50 text-lime-700 border-lime-200',     btn: 'bg-lime-600 text-white border-lime-600',     btnOff: 'bg-lime-50 text-lime-700 border-lime-200 hover:bg-lime-100' },
+  'Autoencoders':                    { badge: 'bg-sky-50 text-sky-700 border-sky-200',       btn: 'bg-sky-600 text-white border-sky-600',       btnOff: 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100' },
+  'Reinforcement Learning':          { badge: 'bg-red-50 text-red-700 border-red-200',       btn: 'bg-red-600 text-white border-red-600',       btnOff: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' },
+  'NLP Fundamentals':                { badge: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200', btn: 'bg-fuchsia-600 text-white border-fuchsia-600', btnOff: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 hover:bg-fuchsia-100' },
+  'Anomaly Detection':               { badge: 'bg-yellow-50 text-yellow-700 border-yellow-200', btn: 'bg-yellow-500 text-white border-yellow-500', btnOff: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100' },
+  'Model Explainability':            { badge: 'bg-slate-50 text-slate-700 border-slate-200',  btn: 'bg-slate-600 text-white border-slate-600',   btnOff: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100' },
+  'Time Series':                     { badge: 'bg-green-50 text-green-700 border-green-200',  btn: 'bg-green-600 text-white border-green-600',   btnOff: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
+  'GANs':                            { badge: 'bg-zinc-50 text-zinc-700 border-zinc-200',    btn: 'bg-zinc-700 text-white border-zinc-700',     btnOff: 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100' },
+  'MLOps':                           { badge: 'bg-neutral-100 text-neutral-700 border-neutral-200', btn: 'bg-neutral-700 text-white border-neutral-700', btnOff: 'bg-neutral-100 text-neutral-700 border-neutral-200 hover:bg-neutral-200' },
+  'Hyperparameter Optimization':     { badge: 'bg-stone-50 text-stone-700 border-stone-200',  btn: 'bg-stone-600 text-white border-stone-600',   btnOff: 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100' },
 };
 
 const fallbackColors = {

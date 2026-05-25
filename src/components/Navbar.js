@@ -28,7 +28,7 @@ export default function Navbar() {
 
         <nav className="flex items-center gap-4 text-sm text-gray-600">
           <Link href={allPostsHref} className="hover:text-gray-900 transition-colors">
-            {isEnglish ? 'All Posts' : 'সব ব্লগ'}
+            {isEnglish ? 'All Blogs' : 'সব ব্লগ'}
           </Link>
 
           {/* Language toggle */}

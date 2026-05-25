@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { blogs } from '@/data/blogs/index';
+import MobileSidebar from '@/components/MobileSidebar';
 
 export function generateStaticParams() {
   return blogs.map((b) => ({ slug: b.slug }));
@@ -24,7 +25,7 @@ export default async function BlogPost({ params }) {
 
   const categories = [...new Set(blogs.map((b) => b.category))];
   const grouped = categories.reduce((acc, cat) => {
-    acc[cat] = blogs.filter((b) => b.category === cat);
+    acc[cat] = blogs.filter((b) => b.category === cat).map(({ slug, title }) => ({ slug, title }));
     return acc;
   }, {});
 
@@ -49,6 +50,16 @@ export default async function BlogPost({ params }) {
         </div>
         <span className="text-xs font-medium text-gray-500 shrink-0">{currentIdx + 1} / {blogs.length}</span>
       </div>
+
+      {/* Mobile sidebar toggle (floating button + slide-in panel) */}
+      <MobileSidebar
+        grouped={grouped}
+        currentSlug={slug}
+        basePath="/blog"
+        totalCount={blogs.length}
+        currentIdx={currentIdx}
+        labels={{ allPosts: 'সব ব্লগ', progress: 'পড়ার অগ্রগতি' }}
+      />
 
       <div className="flex flex-col lg:flex-row gap-10 items-start">
 

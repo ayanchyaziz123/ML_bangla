@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { blogs }    from '@/data/blogs/index';
 import { enBlogs, enBlogMap } from '@/data/en/index';
+import MobileSidebar from '@/components/MobileSidebar';
 
 // Generate static paths for all English blogs
 export function generateStaticParams() {
@@ -30,7 +31,7 @@ export default async function EnglishBlogPost({ params }) {
 
   const categories = [...new Set(enBlogs.map((b) => b.category))];
   const grouped    = categories.reduce((acc, cat) => {
-    acc[cat] = enBlogs.filter((b) => b.category === cat);
+    acc[cat] = enBlogs.filter((b) => b.category === cat).map(({ slug, title }) => ({ slug, title }));
     return acc;
   }, {});
 
@@ -55,6 +56,16 @@ export default async function EnglishBlogPost({ params }) {
         </div>
         <span className="text-xs font-medium text-gray-500 shrink-0">{currentIdx + 1} / {enBlogs.length}</span>
       </div>
+
+      {/* Mobile sidebar toggle */}
+      <MobileSidebar
+        grouped={grouped}
+        currentSlug={slug}
+        basePath="/en/blog"
+        totalCount={enBlogs.length}
+        currentIdx={currentIdx}
+        labels={{ allPosts: 'All Blogs', progress: 'Reading progress' }}
+      />
 
       <div className="flex flex-col lg:flex-row gap-10 items-start">
 

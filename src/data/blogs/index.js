@@ -67,6 +67,18 @@ import { nn_4_keras } from './nn-4-keras.js';
 import { nn_5_cnn } from './nn-5-cnn.js';
 import { nn_6_regularization } from './nn-6-regularization.js';
 import { nn_7_project } from './nn-7-project.js';
+import { cnn_1_architecture } from './cnn-1-architecture.js';
+import { cnn_2_pooling_batchnorm } from './cnn-2-pooling-batchnorm.js';
+import { cnn_3_famous_architectures } from './cnn-3-famous-architectures.js';
+import { cnn_4_object_detection } from './cnn-4-object-detection.js';
+import { cnn_5_segmentation } from './cnn-5-segmentation.js';
+import { cnn_6_project } from './cnn-6-project.js';
+import { gnn_1_graph_basics } from './gnn-1-graph-basics.js';
+import { gnn_2_gcn } from './gnn-2-gcn.js';
+import { gnn_3_graphsage } from './gnn-3-graphsage.js';
+import { gnn_4_gat } from './gnn-4-gat.js';
+import { gnn_5_applications } from './gnn-5-applications.js';
+import { gnn_6_project } from './gnn-6-project.js';
 
 export const blogs = [
   lr_1_ki_keno_math,
@@ -138,4 +150,16 @@ export const blogs = [
   cluster_6_gmm,
   nn_8_rnn_lstm,
   nn_9_transfer_learning,
+  cnn_1_architecture,
+  cnn_2_pooling_batchnorm,
+  cnn_3_famous_architectures,
+  cnn_4_object_detection,
+  cnn_5_segmentation,
+  cnn_6_project,
+  gnn_1_graph_basics,
+  gnn_2_gcn,
+  gnn_3_graphsage,
+  gnn_4_gat,
+  gnn_5_applications,
+  gnn_6_project,
 ];
