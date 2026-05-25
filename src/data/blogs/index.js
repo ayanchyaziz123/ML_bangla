@@ -79,6 +79,65 @@ import { gnn_3_graphsage } from './gnn-3-graphsage.js';
 import { gnn_4_gat } from './gnn-4-gat.js';
 import { gnn_5_applications } from './gnn-5-applications.js';
 import { gnn_6_project } from './gnn-6-project.js';
+import { transformer_1_attention } from './transformer-1-attention.js';
+import { transformer_2_self_attention } from './transformer-2-self-attention.js';
+import { transformer_3_architecture } from './transformer-3-architecture.js';
+import { transformer_4_bert } from './transformer-4-bert.js';
+import { transformer_5_gpt } from './transformer-5-gpt.js';
+import { transformer_6_vit } from './transformer-6-vit.js';
+import { dimred_1_pca } from './dimred-1-pca.js';
+import { dimred_2_svd } from './dimred-2-svd.js';
+import { dimred_3_tsne } from './dimred-3-tsne.js';
+import { dimred_4_umap } from './dimred-4-umap.js';
+import { dimred_5_project } from './dimred-5-project.js';
+import { autoencoder_1_basics } from './autoencoder-1-basics.js';
+import { autoencoder_2_denoising } from './autoencoder-2-denoising.js';
+import { autoencoder_3_sparse } from './autoencoder-3-sparse.js';
+import { autoencoder_4_vae } from './autoencoder-4-vae.js';
+import { autoencoder_5_project } from './autoencoder-5-project.js';
+import { rl_1_mdp } from './rl-1-mdp.js';
+import { rl_2_qlearning } from './rl-2-qlearning.js';
+import { rl_3_dqn } from './rl-3-dqn.js';
+import { rl_4_policy_gradient } from './rl-4-policy-gradient.js';
+import { rl_5_actor_critic } from './rl-5-actor-critic.js';
+import { rl_6_project } from './rl-6-project.js';
+import { nlp_1_tokenization } from './nlp-1-tokenization.js';
+import { nlp_2_tfidf } from './nlp-2-tfidf.js';
+import { nlp_3_word2vec } from './nlp-3-word2vec.js';
+import { nlp_4_glove } from './nlp-4-glove.js';
+import { nlp_5_sentiment } from './nlp-5-sentiment.js';
+import { nlp_6_ner } from './nlp-6-ner.js';
+import { anomaly_1_statistics } from './anomaly-1-statistics.js';
+import { anomaly_2_isolation_forest } from './anomaly-2-isolation-forest.js';
+import { anomaly_3_one_class_svm } from './anomaly-3-one-class-svm.js';
+import { anomaly_4_lof } from './anomaly-4-lof.js';
+import { anomaly_5_project } from './anomaly-5-project.js';
+import { explain_1_intro } from './explain-1-intro.js';
+import { explain_2_shap } from './explain-2-shap.js';
+import { explain_3_lime } from './explain-3-lime.js';
+import { explain_4_permutation } from './explain-4-permutation.js';
+import { explain_5_project } from './explain-5-project.js';
+import { timeseries_1_basics } from './timeseries-1-basics.js';
+import { timeseries_2_arima } from './timeseries-2-arima.js';
+import { timeseries_3_prophet } from './timeseries-3-prophet.js';
+import { timeseries_4_lstm } from './timeseries-4-lstm.js';
+import { timeseries_5_features } from './timeseries-5-features.js';
+import { timeseries_6_project } from './timeseries-6-project.js';
+import { gan_1_basics } from './gan-1-basics.js';
+import { gan_2_dcgan } from './gan-2-dcgan.js';
+import { gan_3_conditional } from './gan-3-conditional.js';
+import { gan_4_wgan } from './gan-4-wgan.js';
+import { gan_5_project } from './gan-5-project.js';
+import { mlops_1_versioning } from './mlops-1-versioning.js';
+import { mlops_2_pipeline } from './mlops-2-pipeline.js';
+import { mlops_3_deployment } from './mlops-3-deployment.js';
+import { mlops_4_monitoring } from './mlops-4-monitoring.js';
+import { mlops_5_project } from './mlops-5-project.js';
+import { hyperparam_1_basics } from './hyperparam-1-basics.js';
+import { hyperparam_2_search } from './hyperparam-2-search.js';
+import { hyperparam_3_bayesian } from './hyperparam-3-bayesian.js';
+import { hyperparam_4_optuna } from './hyperparam-4-optuna.js';
+import { hyperparam_5_project } from './hyperparam-5-project.js';
 
 export const blogs = [
   lr_1_ki_keno_math,
@@ -162,4 +221,63 @@ export const blogs = [
   gnn_4_gat,
   gnn_5_applications,
   gnn_6_project,
+  transformer_1_attention,
+  transformer_2_self_attention,
+  transformer_3_architecture,
+  transformer_4_bert,
+  transformer_5_gpt,
+  transformer_6_vit,
+  dimred_1_pca,
+  dimred_2_svd,
+  dimred_3_tsne,
+  dimred_4_umap,
+  dimred_5_project,
+  autoencoder_1_basics,
+  autoencoder_2_denoising,
+  autoencoder_3_sparse,
+  autoencoder_4_vae,
+  autoencoder_5_project,
+  rl_1_mdp,
+  rl_2_qlearning,
+  rl_3_dqn,
+  rl_4_policy_gradient,
+  rl_5_actor_critic,
+  rl_6_project,
+  nlp_1_tokenization,
+  nlp_2_tfidf,
+  nlp_3_word2vec,
+  nlp_4_glove,
+  nlp_5_sentiment,
+  nlp_6_ner,
+  anomaly_1_statistics,
+  anomaly_2_isolation_forest,
+  anomaly_3_one_class_svm,
+  anomaly_4_lof,
+  anomaly_5_project,
+  explain_1_intro,
+  explain_2_shap,
+  explain_3_lime,
+  explain_4_permutation,
+  explain_5_project,
+  timeseries_1_basics,
+  timeseries_2_arima,
+  timeseries_3_prophet,
+  timeseries_4_lstm,
+  timeseries_5_features,
+  timeseries_6_project,
+  gan_1_basics,
+  gan_2_dcgan,
+  gan_3_conditional,
+  gan_4_wgan,
+  gan_5_project,
+  mlops_1_versioning,
+  mlops_2_pipeline,
+  mlops_3_deployment,
+  mlops_4_monitoring,
+  mlops_5_project,
+  hyperparam_1_basics,
+  hyperparam_2_search,
+  hyperparam_3_bayesian,
+  hyperparam_4_optuna,
+  hyperparam_5_project,
 ];

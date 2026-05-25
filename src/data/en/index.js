@@ -1,15 +1,26 @@
-import { lrEn }      from './lr.js';
-import { logitEn }   from './logit.js';
-import { dtEn }      from './dt.js';
-import { nbEn }      from './nb.js';
-import { svmEn }     from './svm.js';
-import { knnEn }     from './knn.js';
-import { clusterEn } from './cluster.js';
-import { nnEn }      from './nn.js';
-import { cnnEn }     from './cnn.js';
-import { gnnEn }     from './gnn.js';
+import { lrEn }          from './lr.js';
+import { logitEn }       from './logit.js';
+import { dtEn }          from './dt.js';
+import { nbEn }          from './nb.js';
+import { svmEn }         from './svm.js';
+import { knnEn }         from './knn.js';
+import { clusterEn }     from './cluster.js';
+import { nnEn }          from './nn.js';
+import { cnnEn }         from './cnn.js';
+import { gnnEn }         from './gnn.js';
+import { transformerEn } from './transformer.js';
+import { dimredEn }      from './dimred.js';
+import { autoencoderEn } from './autoencoder.js';
+import { rlEn }          from './rl.js';
+import { nlpEn }         from './nlp.js';
+import { anomalyEn }     from './anomaly.js';
+import { explainEn }     from './explain.js';
+import { timeseriesEn }  from './timeseries.js';
+import { ganEn }         from './gan.js';
+import { mlopsEn }       from './mlops.js';
+import { hyperparamEn }  from './hyperparam.js';
 
-export const enBlogs = [...lrEn, ...logitEn, ...dtEn, ...nbEn, ...svmEn, ...knnEn, ...clusterEn, ...nnEn, ...cnnEn, ...gnnEn];
+export const enBlogs = [...lrEn, ...logitEn, ...dtEn, ...nbEn, ...svmEn, ...knnEn, ...clusterEn, ...nnEn, ...cnnEn, ...gnnEn, ...transformerEn, ...dimredEn, ...autoencoderEn, ...rlEn, ...nlpEn, ...anomalyEn, ...explainEn, ...timeseriesEn, ...ganEn, ...mlopsEn, ...hyperparamEn];
 
 // Fast slug → English blog lookup
 export const enBlogMap = Object.fromEntries(enBlogs.map((b) => [b.slug, b]));
