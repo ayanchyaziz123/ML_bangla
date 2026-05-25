@@ -34,6 +34,49 @@ const fallbackColors = {
   btnOff: 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200',
 };
 
+function NeuralNetworkSVG() {
+  const iX = 44, h1X = 134, h2X = 224, oX = 314;
+  const iY = [65, 120, 175];
+  const hY = [40, 90, 145, 195];
+  const oY = [90, 155];
+  const r  = 13;
+  return (
+    <svg viewBox="0 0 358 228" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto select-none">
+      <defs>
+        <radialGradient id="gI" cx="35%" cy="35%"><stop offset="0%" stopColor="#93c5fd"/><stop offset="100%" stopColor="#2563eb"/></radialGradient>
+        <radialGradient id="gH1" cx="35%" cy="35%"><stop offset="0%" stopColor="#c4b5fd"/><stop offset="100%" stopColor="#7c3aed"/></radialGradient>
+        <radialGradient id="gH2" cx="35%" cy="35%"><stop offset="0%" stopColor="#d8b4fe"/><stop offset="100%" stopColor="#9333ea"/></radialGradient>
+        <radialGradient id="gO" cx="35%" cy="35%"><stop offset="0%" stopColor="#f9a8d4"/><stop offset="100%" stopColor="#db2777"/></radialGradient>
+        <style>{`
+          @keyframes nnp{0%,100%{opacity:.9}50%{opacity:.4}}
+          .ni{animation:nnp 2.6s ease-in-out infinite}
+          .nh1{animation:nnp 2.6s ease-in-out infinite .35s}
+          .nh2{animation:nnp 2.6s ease-in-out infinite .7s}
+          .no{animation:nnp 2.6s ease-in-out infinite 1.05s}
+        `}</style>
+      </defs>
+      {/* all connections */}
+      {iY.flatMap(y1 => hY.map(y2 => <line key={`ih${y1}${y2}`} x1={iX+r} y1={y1} x2={h1X-r} y2={y2} stroke="#e2e8f0" strokeWidth="0.9"/>))}
+      {hY.flatMap(y1 => hY.map(y2 => <line key={`hh${y1}${y2}`} x1={h1X+r} y1={y1} x2={h2X-r} y2={y2} stroke="#e2e8f0" strokeWidth="0.9"/>))}
+      {hY.flatMap(y1 => oY.map(y2 => <line key={`ho${y1}${y2}`} x1={h2X+r} y1={y1} x2={oX-r} y2={y2} stroke="#e2e8f0" strokeWidth="0.9"/>))}
+      {/* highlighted path */}
+      <line x1={iX+r} y1={120} x2={h1X-r} y2={90}  stroke="#818cf8" strokeWidth="1.6" opacity="0.55"/>
+      <line x1={h1X+r} y1={90} x2={h2X-r} y2={90}  stroke="#a78bfa" strokeWidth="1.6" opacity="0.55"/>
+      <line x1={h2X+r} y1={90} x2={oX-r}  y2={90}  stroke="#c084fc" strokeWidth="1.6" opacity="0.55"/>
+      {/* nodes */}
+      {iY.map((y,i)  => <circle key={`ni${i}`}  className="ni"  cx={iX}  cy={y} r={r} fill="url(#gI)"  style={{animationDelay:`${i*.15}s`}}/>)}
+      {hY.map((y,i)  => <circle key={`nh1${i}`} className="nh1" cx={h1X} cy={y} r={r} fill="url(#gH1)" style={{animationDelay:`${.35+i*.15}s`}}/>)}
+      {hY.map((y,i)  => <circle key={`nh2${i}`} className="nh2" cx={h2X} cy={y} r={r} fill="url(#gH2)" style={{animationDelay:`${.7+i*.15}s`}}/>)}
+      {oY.map((y,i)  => <circle key={`no${i}`}  className="no"  cx={oX}  cy={y} r={r} fill="url(#gO)"  style={{animationDelay:`${1.05+i*.15}s`}}/>)}
+      {/* labels */}
+      <text x={iX}  y={215} textAnchor="middle" fontSize="9" fill="#94a3b8" fontFamily="sans-serif">ইনপুট</text>
+      <text x={h1X} y={215} textAnchor="middle" fontSize="9" fill="#94a3b8" fontFamily="sans-serif">Hidden 1</text>
+      <text x={h2X} y={215} textAnchor="middle" fontSize="9" fill="#94a3b8" fontFamily="sans-serif">Hidden 2</text>
+      <text x={oX}  y={215} textAnchor="middle" fontSize="9" fill="#94a3b8" fontFamily="sans-serif">আউটপুট</text>
+    </svg>
+  );
+}
+
 export default function Home() {
   const [active, setActive] = useState(null);
 
@@ -45,16 +88,23 @@ export default function Home() {
 
       {/* Hero */}
       <section className="mb-10 pb-10 border-b border-gray-100">
-        <span className="inline-block text-xs font-semibold tracking-widest uppercase text-amber-600 mb-4">
-          বাংলা ব্লগ সিরিজ
-        </span>
-        <h1 className="text-3xl sm:text-5xl font-bold text-gray-900 leading-tight mb-4">
-          বাংলায় মেশিন লার্নিং
-        </h1>
-        <p className="text-gray-500 text-base sm:text-lg max-w-2xl leading-relaxed">
-          মেশিন লার্নিং-এর ধারণাগুলো সহজ বাংলায় — গণিত, কোড এবং বাস্তব উদাহরণ সহ।
-          যারা বাংলায় শিখতে পছন্দ করেন তাদের জন্য।
-        </p>
+        <div className="flex flex-col lg:flex-row items-center gap-8 lg:gap-10">
+          <div className="flex-1 min-w-0">
+            <span className="inline-block text-xs font-semibold tracking-widest uppercase text-amber-600 mb-4">
+              বাংলা ব্লগ সিরিজ
+            </span>
+            <h1 className="text-3xl sm:text-5xl font-bold text-gray-900 leading-tight mb-4">
+              বাংলায় মেশিন লার্নিং
+            </h1>
+            <p className="text-gray-500 text-base sm:text-lg leading-relaxed">
+              মেশিন লার্নিং-এর ধারণাগুলো সহজ বাংলায় — গণিত, কোড এবং বাস্তব উদাহরণ সহ।
+              যারা বাংলায় শিখতে পছন্দ করেন তাদের জন্য।
+            </p>
+          </div>
+          <div className="flex-shrink-0 w-full max-w-[280px] lg:max-w-[320px] opacity-90">
+            <NeuralNetworkSVG />
+          </div>
+        </div>
       </section>
 
       {/* Category filter bar */}
