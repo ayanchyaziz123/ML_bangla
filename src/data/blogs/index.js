@@ -138,6 +138,23 @@ import { hyperparam_2_search } from './hyperparam-2-search.js';
 import { hyperparam_3_bayesian } from './hyperparam-3-bayesian.js';
 import { hyperparam_4_optuna } from './hyperparam-4-optuna.js';
 import { hyperparam_5_project } from './hyperparam-5-project.js';
+import { llm_1_intro } from './llm-1-intro.js';
+import { llm_2_prompting } from './llm-2-prompting.js';
+import { llm_3_rag } from './llm-3-rag.js';
+import { llm_4_finetune } from './llm-4-finetune.js';
+import { llm_5_peft } from './llm-5-peft.js';
+import { llm_6_project } from './llm-6-project.js';
+import { recsys_1_basics } from './recsys-1-basics.js';
+import { recsys_2_matrix } from './recsys-2-matrix.js';
+import { recsys_3_neural } from './recsys-3-neural.js';
+import { recsys_4_deep } from './recsys-4-deep.js';
+import { recsys_5_project } from './recsys-5-project.js';
+import { stats_1_probability } from './stats-1-probability.js';
+import { stats_2_hypothesis } from './stats-2-hypothesis.js';
+import { stats_3_distributions } from './stats-3-distributions.js';
+import { stats_4_bayesian } from './stats-4-bayesian.js';
+import { stats_5_project } from './stats-5-project.js';
+import { interview_1_100 } from './interview-1-100.js';
 
 export const blogs = [
   lr_1_ki_keno_math,
@@ -280,4 +297,21 @@ export const blogs = [
   hyperparam_3_bayesian,
   hyperparam_4_optuna,
   hyperparam_5_project,
+  llm_1_intro,
+  llm_2_prompting,
+  llm_3_rag,
+  llm_4_finetune,
+  llm_5_peft,
+  llm_6_project,
+  recsys_1_basics,
+  recsys_2_matrix,
+  recsys_3_neural,
+  recsys_4_deep,
+  recsys_5_project,
+  stats_1_probability,
+  stats_2_hypothesis,
+  stats_3_distributions,
+  stats_4_bayesian,
+  stats_5_project,
+  interview_1_100,
 ];

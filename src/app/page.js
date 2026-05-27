@@ -26,6 +26,10 @@ const categoryColors = {
   'জেনারেটিভ অ্যাডভার্সারিয়াল নেটওয়ার্ক': { badge: 'bg-zinc-50 text-zinc-700 border-zinc-200', btn: 'bg-zinc-700 text-white border-zinc-700',    btnOff: 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100' },
   'এমএলঅপস':                           { badge: 'bg-neutral-100 text-neutral-700 border-neutral-200', btn: 'bg-neutral-700 text-white border-neutral-700', btnOff: 'bg-neutral-100 text-neutral-700 border-neutral-200 hover:bg-neutral-200' },
   'হাইপারপ্যারামিটার অপটিমাইজেশন':     { badge: 'bg-stone-50 text-stone-700 border-stone-200',  btn: 'bg-stone-600 text-white border-stone-600',   btnOff: 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100' },
+  'এলএলএম ও ফাইন-টিউনিং':             { badge: 'bg-violet-100 text-violet-800 border-violet-300', btn: 'bg-violet-700 text-white border-violet-700', btnOff: 'bg-violet-100 text-violet-800 border-violet-300 hover:bg-violet-200' },
+  'রেকমেন্ডার সিস্টেম':                { badge: 'bg-cyan-100 text-cyan-800 border-cyan-300',     btn: 'bg-cyan-700 text-white border-cyan-700',     btnOff: 'bg-cyan-100 text-cyan-800 border-cyan-300 hover:bg-cyan-200' },
+  'এমএল-এর জন্য পরিসংখ্যান':           { badge: 'bg-emerald-100 text-emerald-800 border-emerald-300', btn: 'bg-emerald-700 text-white border-emerald-700', btnOff: 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' },
+  'এমএল ইন্টারভিউ প্রশ্ন':              { badge: 'bg-gray-900 text-white border-gray-700',        btn: 'bg-gray-900 text-white border-gray-900',     btnOff: 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200' },
 };
 
 const fallbackColors = {

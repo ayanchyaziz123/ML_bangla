@@ -19,8 +19,12 @@ import { timeseriesEn }  from './timeseries.js';
 import { ganEn }         from './gan.js';
 import { mlopsEn }       from './mlops.js';
 import { hyperparamEn }  from './hyperparam.js';
+import { llmEn }         from './llm.js';
+import { recsysEn }      from './recsys.js';
+import { statsEn }       from './stats.js';
+import { interviewEn }   from './interview.js';
 
-export const enBlogs = [...lrEn, ...logitEn, ...dtEn, ...nbEn, ...svmEn, ...knnEn, ...clusterEn, ...nnEn, ...cnnEn, ...gnnEn, ...transformerEn, ...dimredEn, ...autoencoderEn, ...rlEn, ...nlpEn, ...anomalyEn, ...explainEn, ...timeseriesEn, ...ganEn, ...mlopsEn, ...hyperparamEn];
+export const enBlogs = [...lrEn, ...logitEn, ...dtEn, ...nbEn, ...svmEn, ...knnEn, ...clusterEn, ...nnEn, ...cnnEn, ...gnnEn, ...transformerEn, ...dimredEn, ...autoencoderEn, ...rlEn, ...nlpEn, ...anomalyEn, ...explainEn, ...timeseriesEn, ...ganEn, ...mlopsEn, ...hyperparamEn, ...llmEn, ...recsysEn, ...statsEn, ...interviewEn];
 
 // Fast slug → English blog lookup
 export const enBlogMap = Object.fromEntries(enBlogs.map((b) => [b.slug, b]));
