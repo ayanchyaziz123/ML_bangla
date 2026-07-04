@@ -67,37 +67,59 @@ print(result)
       <li>Overfitting কম হয়</li>
       <li>Different input sizes handle করতে পারে (fully convolutional)</li>
     </ul>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers, models
+    <pre><code>import torch
+import torch.nn as nn
 
 # Flatten vs GAP comparison
-def model_with_flatten(input_shape=(32, 32, 3), num_classes=10):
-    inputs = tf.keras.Input(shape=input_shape)
-    x = layers.Conv2D(64, (3,3), padding='same', activation='relu')(inputs)
-    x = layers.MaxPooling2D((2,2))(x)
-    x = layers.Conv2D(128, (3,3), padding='same', activation='relu')(x)
-    x = layers.MaxPooling2D((2,2))(x)
-    x = layers.Flatten()(x)         # 8*8*128 = 8192 neurons
-    x = layers.Dense(256, activation='relu')(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
-    return models.Model(inputs, outputs)
+class ModelWithFlatten(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 64, 3, padding=1)
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(2)
+        self.conv2 = nn.Conv2d(64, 128, 3, padding=1)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool2d(2)
+        self.flatten = nn.Flatten()      # 8*8*128 = 8192 neurons
+        self.fc1 = nn.Linear(8192, 256)
+        self.relu3 = nn.ReLU()
+        self.fc2 = nn.Linear(256, num_classes)
 
-def model_with_gap(input_shape=(32, 32, 3), num_classes=10):
-    inputs = tf.keras.Input(shape=input_shape)
-    x = layers.Conv2D(64, (3,3), padding='same', activation='relu')(inputs)
-    x = layers.MaxPooling2D((2,2))(x)
-    x = layers.Conv2D(128, (3,3), padding='same', activation='relu')(x)
-    x = layers.MaxPooling2D((2,2))(x)
-    x = layers.GlobalAveragePooling2D()(x)  # (128,) vector
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
-    return models.Model(inputs, outputs)
+    def forward(self, x):
+        x = self.pool1(self.relu1(self.conv1(x)))
+        x = self.pool2(self.relu2(self.conv2(x)))
+        x = self.flatten(x)
+        x = self.relu3(self.fc1(x))
+        return self.fc2(x)
 
-m_flat = model_with_flatten()
-m_gap  = model_with_gap()
+class ModelWithGAP(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 64, 3, padding=1)
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(2)
+        self.conv2 = nn.Conv2d(64, 128, 3, padding=1)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool2d(2)
+        self.gap = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()   # (128,) vector
+        self.fc = nn.Linear(128, num_classes)
 
-print(f"Flatten model params: {m_flat.count_params():,}")
-print(f"GAP model params:     {m_gap.count_params():,}")
-# GAP model অনেক কম params — Dense(8192→256) বাদ দেওয়া হয়েছে
+    def forward(self, x):
+        x = self.pool1(self.relu1(self.conv1(x)))
+        x = self.pool2(self.relu2(self.conv2(x)))
+        x = self.gap(x)
+        x = self.flatten(x)
+        return self.fc(x)
+
+m_flat = ModelWithFlatten()
+m_gap  = ModelWithGAP()
+
+flat_params = sum(p.numel() for p in m_flat.parameters())
+gap_params  = sum(p.numel() for p in m_gap.parameters())
+print(f"Flatten model params: {flat_params:,}")
+print(f"GAP model params:     {gap_params:,}")
+# GAP model অনেক কম params — Linear(8192→256) বাদ দেওয়া হয়েছে
 </code></pre>
 
     <h3>৩. Batch Normalization: CNN-এ কীভাবে কাজ করে</h3>
@@ -113,34 +135,46 @@ print(f"GAP model params:     {m_gap.count_params():,}")
       <li><strong>γ, β</strong> = learnable scale ও shift parameters</li>
     </ul>
     <p><strong>CNN-এ BN Placement:</strong> সর্বোত্তম pattern হলো <code>Conv2D → BatchNorm → ReLU</code>।</p>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers
+    <pre><code>import torch
+import torch.nn as nn
 
 # Standard CNN block with BN
-def conv_bn_relu(x, filters, kernel_size=3, stride=1):
+class ConvBNReLU(nn.Module):
     """Conv → BatchNorm → ReLU block"""
-    x = layers.Conv2D(
-        filters,
-        kernel_size,
-        strides=stride,
-        padding='same',
-        use_bias=False    # BN ব্যবহারে bias redundant, তাই False
-    )(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    return x
+    def __init__(self, in_channels, filters, kernel_size=3, stride=1):
+        super().__init__()
+        self.conv = nn.Conv2d(
+            in_channels, filters, kernel_size,
+            stride=stride, padding=kernel_size // 2,
+            bias=False    # BN ব্যবহারে bias redundant, তাই False
+        )
+        self.bn   = nn.BatchNorm2d(filters)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        return self.relu(self.bn(self.conv(x)))
 
 # BN-এর learnable parameters: 4 per channel (gamma, beta, moving_mean, moving_var)
 # 64 filters → 4 * 64 = 256 params (2 trainable + 2 non-trainable)
 
-inputs = tf.keras.Input(shape=(32, 32, 3))
-x = conv_bn_relu(inputs, 32)
-x = conv_bn_relu(x, 64)
-x = layers.GlobalAveragePooling2D()(x)
-outputs = layers.Dense(10, activation='softmax')(x)
+class BNDemoModel(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.block1 = ConvBNReLU(3, 32)
+        self.block2 = ConvBNReLU(32, 64)
+        self.gap     = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()
+        self.fc      = nn.Linear(64, num_classes)
 
-model = tf.keras.Model(inputs, outputs)
-model.summary()
+    def forward(self, x):
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.gap(x)
+        x = self.flatten(x)
+        return self.fc(x)
+
+model = BNDemoModel()
+print(model)
 </code></pre>
 
     <h3>৪. BN-এর সুবিধা ও Training প্রভাব</h3>
@@ -151,58 +185,82 @@ model.summary()
       <li><strong>Regularization effect:</strong> Dropout-এর মতো কিছুটা noise inject করে</li>
       <li><strong>Gradient flow উন্নত করে:</strong> Deep network-এ vanishing gradient কমায়</li>
     </ul>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers, models
-from tensorflow.keras.datasets import cifar10
-import numpy as np
+    <pre><code>import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+import torchvision
+import torchvision.transforms as transforms
 
 # CIFAR-10 load
-(x_train, y_train), (x_test, y_test) = cifar10.load_data()
-x_train = x_train.astype('float32') / 255.0
-x_test  = x_test.astype('float32')  / 255.0
-y_train = tf.keras.utils.to_categorical(y_train, 10)
-y_test  = tf.keras.utils.to_categorical(y_test,  10)
+transform = transforms.ToTensor()
+train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+test_set  = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+train_loader = DataLoader(train_set, batch_size=128, shuffle=True)
+test_loader  = DataLoader(test_set, batch_size=128, shuffle=False)
 
-def build_cnn(use_batchnorm=True):
-    inputs = tf.keras.Input(shape=(32, 32, 3))
+class BNComparisonCNN(nn.Module):
+    def __init__(self, use_batchnorm=True, num_classes=10):
+        super().__init__()
+        self.use_batchnorm = use_batchnorm
 
-    for filters in [32, 64]:
-        if filters == 32:
-            x = layers.Conv2D(filters, (3,3), padding='same', use_bias=not use_batchnorm)(inputs)
-        else:
-            x = layers.Conv2D(filters, (3,3), padding='same', use_bias=not use_batchnorm)(x)
+        self.conv1 = nn.Conv2d(3, 32, 3, padding=1, bias=not use_batchnorm)
+        self.bn1   = nn.BatchNorm2d(32) if use_batchnorm else None
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(2)
 
-        if use_batchnorm:
-            x = layers.BatchNormalization()(x)
-        x = layers.Activation('relu')(x)
-        x = layers.MaxPooling2D((2,2))(x)
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1, bias=not use_batchnorm)
+        self.bn2   = nn.BatchNorm2d(64) if use_batchnorm else None
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool2d(2)
 
-    x = layers.GlobalAveragePooling2D()(x)
-    outputs = layers.Dense(10, activation='softmax')(x)
-    return models.Model(inputs, outputs)
+        self.gap     = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()
+        self.fc      = nn.Linear(64, num_classes)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        if self.use_batchnorm: x = self.bn1(x)
+        x = self.pool1(self.relu1(x))
+
+        x = self.conv2(x)
+        if self.use_batchnorm: x = self.bn2(x)
+        x = self.pool2(self.relu2(x))
+
+        x = self.gap(x)
+        x = self.flatten(x)
+        return self.fc(x)
+
+def train_and_eval(model, lr, epochs=5):
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    val_acc = 0.0
+    for epoch in range(epochs):
+        model.train()
+        for xb, yb in train_loader:
+            optimizer.zero_grad()
+            loss = criterion(model(xb), yb)
+            loss.backward()
+            optimizer.step()
+
+        model.eval()
+        correct, total = 0, 0
+        with torch.no_grad():
+            for xb, yb in test_loader:
+                correct += (model(xb).argmax(dim=1) == yb).sum().item()
+                total   += yb.size(0)
+        val_acc = correct / total
+    return val_acc
 
 # Without BN — lower LR needed
-model_no_bn = build_cnn(use_batchnorm=False)
-model_no_bn.compile(
-    optimizer=tf.keras.optimizers.Adam(0.001),
-    loss='categorical_crossentropy', metrics=['accuracy']
-)
+model_no_bn = BNComparisonCNN(use_batchnorm=False)
+acc_no_bn = train_and_eval(model_no_bn, lr=0.001)
 
 # With BN — higher LR ব্যবহার করা যায়
-model_bn = build_cnn(use_batchnorm=True)
-model_bn.compile(
-    optimizer=tf.keras.optimizers.Adam(0.01),  # 10x বেশি LR
-    loss='categorical_crossentropy', metrics=['accuracy']
-)
+model_bn = BNComparisonCNN(use_batchnorm=True)
+acc_bn = train_and_eval(model_bn, lr=0.01)   # 10x বেশি LR
 
-# Training (5 epochs for comparison)
-history_no_bn = model_no_bn.fit(x_train, y_train, epochs=5,
-    validation_data=(x_test, y_test), batch_size=128, verbose=0)
-history_bn = model_bn.fit(x_train, y_train, epochs=5,
-    validation_data=(x_test, y_test), batch_size=128, verbose=0)
-
-print(f"Without BN - Final val accuracy: {history_no_bn.history['val_accuracy'][-1]:.4f}")
-print(f"With BN    - Final val accuracy: {history_bn.history['val_accuracy'][-1]:.4f}")
+print(f"Without BN - Final val accuracy: {acc_no_bn:.4f}")
+print(f"With BN    - Final val accuracy: {acc_bn:.4f}")
 # With BN সাধারণত 3-5% বেশি accuracy দেবে এবং দ্রুত converge করবে
 </code></pre>
 
@@ -220,101 +278,145 @@ print(f"With BN    - Final val accuracy: {history_bn.history['val_accuracy'][-1]
         <tr><td>Dropout after GAP</td><td>Individual neurons</td><td>GAP → Dropout → Dense</td><td>Modern best practice</td></tr>
       </tbody>
     </table>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers, models
+    <pre><code>import torch
+import torch.nn as nn
 
-def build_cnn_with_dropout(spatial_dropout_rate=0.2, dropout_rate=0.5):
-    inputs = tf.keras.Input(shape=(32, 32, 3))
+class CNNWithDropout(nn.Module):
+    def __init__(self, spatial_dropout_rate=0.2, dropout_rate=0.5, num_classes=10):
+        super().__init__()
+        # Block 1
+        self.conv1   = nn.Conv2d(3, 32, 3, padding=1, bias=False)
+        self.bn1     = nn.BatchNorm2d(32)
+        self.relu1   = nn.ReLU()
+        self.spdrop1 = nn.Dropout2d(spatial_dropout_rate)   # Feature map-level dropout
+        self.pool1   = nn.MaxPool2d(2)
 
-    # Block 1
-    x = layers.Conv2D(32, (3,3), padding='same', use_bias=False)(inputs)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.SpatialDropout2D(spatial_dropout_rate)(x)  # Feature map-level dropout
-    x = layers.MaxPooling2D((2,2))(x)
+        # Block 2
+        self.conv2   = nn.Conv2d(32, 64, 3, padding=1, bias=False)
+        self.bn2     = nn.BatchNorm2d(64)
+        self.relu2   = nn.ReLU()
+        self.spdrop2 = nn.Dropout2d(spatial_dropout_rate)
+        self.pool2   = nn.MaxPool2d(2)
 
-    # Block 2
-    x = layers.Conv2D(64, (3,3), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.SpatialDropout2D(spatial_dropout_rate)(x)
-    x = layers.MaxPooling2D((2,2))(x)
+        # Classifier
+        self.gap     = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()
+        self.dropout = nn.Dropout(dropout_rate)             # Regular dropout before Linear
+        self.fc      = nn.Linear(64, num_classes)
 
-    # Classifier
-    x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dropout(dropout_rate)(x)                   # Regular dropout before Dense
-    outputs = layers.Dense(10, activation='softmax')(x)
+    def forward(self, x):
+        x = self.pool1(self.spdrop1(self.relu1(self.bn1(self.conv1(x)))))
+        x = self.pool2(self.spdrop2(self.relu2(self.bn2(self.conv2(x)))))
+        x = self.gap(x)
+        x = self.flatten(x)
+        x = self.dropout(x)
+        return self.fc(x)
 
-    return models.Model(inputs, outputs)
+model = CNNWithDropout()
+print(model)
 
-model = build_cnn_with_dropout()
-model.summary()
-
-# Note: Dropout is only active during training (training=True)
-# Inference-এ automatically disabled হয়
+# Note: Dropout is only active during training — call model.train()
+# Inference-এ model.eval() call করলে automatically disabled হয়
 </code></pre>
 
     <h3>৬. Complete CNN Block: সবকিছু একসাথে</h3>
     <p>Production-grade CNN block: Conv2D → BatchNorm → ReLU → MaxPool — এই pattern বারবার repeat করা হয়।</p>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers, models
-from tensorflow.keras.datasets import cifar10
+    <pre><code>import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+import torchvision
+import torchvision.transforms as transforms
 
-def cnn_block(x, filters, pool=True):
+class CNNBlock(nn.Module):
     """Standard CNN block: Conv→BN→ReLU→(MaxPool)"""
-    x = layers.Conv2D(filters, (3,3), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.Conv2D(filters, (3,3), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    if pool:
-        x = layers.MaxPooling2D((2,2))(x)
-        x = layers.SpatialDropout2D(0.1)(x)
-    return x
+    def __init__(self, in_channels, filters, pool=True):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, filters, 3, padding=1, bias=False)
+        self.bn1   = nn.BatchNorm2d(filters)
+        self.relu1 = nn.ReLU()
+        self.conv2 = nn.Conv2d(filters, filters, 3, padding=1, bias=False)
+        self.bn2   = nn.BatchNorm2d(filters)
+        self.relu2 = nn.ReLU()
 
-def build_full_cnn(num_classes=10):
-    inputs = tf.keras.Input(shape=(32, 32, 3))
+        self.do_pool = pool
+        if pool:
+            self.pool  = nn.MaxPool2d(2)
+            self.spdrop = nn.Dropout2d(0.1)
 
-    x = cnn_block(inputs,  32, pool=True)   # → 16x16x32
-    x = cnn_block(x,       64, pool=True)   # → 8x8x64
-    x = cnn_block(x,      128, pool=True)   # → 4x4x128
+    def forward(self, x):
+        x = self.relu1(self.bn1(self.conv1(x)))
+        x = self.relu2(self.bn2(self.conv2(x)))
+        if self.do_pool:
+            x = self.pool(x)
+            x = self.spdrop(x)
+        return x
 
-    x = layers.GlobalAveragePooling2D()(x)  # → (128,)
-    x = layers.Dropout(0.4)(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
+class FullCNN(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.block1 = CNNBlock(3,   32, pool=True)   # → 16x16x32
+        self.block2 = CNNBlock(32,  64, pool=True)   # → 8x8x64
+        self.block3 = CNNBlock(64, 128, pool=True)   # → 4x4x128
 
-    return models.Model(inputs, outputs)
+        self.gap     = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()              # → (128,)
+        self.dropout = nn.Dropout(0.4)
+        self.fc      = nn.Linear(128, num_classes)
 
-# Load and train
-(x_train, y_train), (x_test, y_test) = cifar10.load_data()
-x_train = x_train / 255.0
-x_test  = x_test  / 255.0
-y_train = tf.keras.utils.to_categorical(y_train, 10)
-y_test  = tf.keras.utils.to_categorical(y_test,  10)
+    def forward(self, x):
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.gap(x)
+        x = self.flatten(x)
+        x = self.dropout(x)
+        return self.fc(x)
 
-model = build_full_cnn()
-model.compile(
-    optimizer=tf.keras.optimizers.Adam(0.001),
-    loss='categorical_crossentropy',
-    metrics=['accuracy']
-)
+# Load data
+transform = transforms.ToTensor()
+train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+test_set  = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+train_loader = DataLoader(train_set, batch_size=128, shuffle=True)
+test_loader  = DataLoader(test_set, batch_size=128, shuffle=False)
 
-callbacks = [
-    tf.keras.callbacks.ReduceLROnPlateau(patience=3, factor=0.5, verbose=1),
-    tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)
-]
+model = FullCNN()
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, factor=0.5, verbose=True)
 
-history = model.fit(
-    x_train, y_train,
-    epochs=50, batch_size=128,
-    validation_data=(x_test, y_test),
-    callbacks=callbacks, verbose=1
-)
+best_val_acc, epochs_no_improve, best_state = 0.0, 0, None
+patience = 10   # early stopping patience
+
+for epoch in range(50):
+    model.train()
+    for xb, yb in train_loader:
+        optimizer.zero_grad()
+        loss = criterion(model(xb), yb)
+        loss.backward()
+        optimizer.step()
+
+    model.eval()
+    correct, total, val_loss_sum = 0, 0, 0.0
+    with torch.no_grad():
+        for xb, yb in test_loader:
+            out = model(xb)
+            val_loss_sum += criterion(out, yb).item()
+            correct += (out.argmax(dim=1) == yb).sum().item()
+            total   += yb.size(0)
+    val_acc = correct / total
+    scheduler.step(val_loss_sum)
+
+    if val_acc > best_val_acc:
+        best_val_acc, best_state, epochs_no_improve = val_acc, model.state_dict(), 0
+    else:
+        epochs_no_improve += 1
+        if epochs_no_improve >= patience:   # early stopping
+            break
+
+model.load_state_dict(best_state)   # restore best weights
 
 # এই model CIFAR-10-এ ~80-85% accuracy দেওয়া উচিত
-test_loss, test_acc = model.evaluate(x_test, y_test)
-print(f"Test accuracy: {test_acc:.4f}")
+print(f"Test accuracy: {best_val_acc:.4f}")
 </code></pre>
   `,
 };

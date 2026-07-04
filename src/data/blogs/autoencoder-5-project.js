@@ -21,8 +21,8 @@ export const autoencoder_5_project = {
 
 <pre><code class="language-python">import numpy as np
 import pandas as pd
-import tensorflow as tf
-from tensorflow import keras
+import torch
+import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, roc_auc_score
@@ -54,36 +54,66 @@ print(f"ট্রেনিং: {X_train.shape}, ভ্যালিডেশন: 
 
 <pre><code class="language-python">input_dim = X_train.shape[1]  # 30 ফিচার
 
-def build_autoencoder(input_dim, encoding_dim=14):
-    # এনকোডার
-    inputs = keras.Input(shape=(input_dim,))
-    encoded = keras.layers.Dense(20, activation='relu')(inputs)
-    encoded = keras.layers.Dense(encoding_dim, activation='relu')(encoded)
+class Autoencoder(nn.Module):
+    def __init__(self, input_dim, encoding_dim=14):
+        super().__init__()
+        # এনকোডার
+        self.enc_fc1 = nn.Linear(input_dim, 20)
+        self.enc_fc2 = nn.Linear(20, encoding_dim)
+        # ডিকোডার
+        self.dec_fc1 = nn.Linear(encoding_dim, 20)
+        self.dec_fc2 = nn.Linear(20, input_dim)   # linear activation (কোনো আউটপুট নন-লিনিয়ারিটি নেই)
+        self.relu = nn.ReLU()
 
-    # ডিকোডার
-    decoded = keras.layers.Dense(20, activation='relu')(encoded)
-    decoded = keras.layers.Dense(input_dim, activation='linear')(decoded)
+    def forward(self, x):
+        x = self.relu(self.enc_fc1(x))
+        encoded = self.relu(self.enc_fc2(x))
+        x = self.relu(self.dec_fc1(encoded))
+        return self.dec_fc2(x)
 
-    autoencoder = keras.Model(inputs, decoded)
-    autoencoder.compile(optimizer='adam', loss='mse')
-    return autoencoder
-
-ae = build_autoencoder(input_dim)
-ae.summary()
+ae = Autoencoder(input_dim)
+criterion = nn.MSELoss()
+optimizer = torch.optim.Adam(ae.parameters(), lr=0.001)
+print(ae)
 </code></pre>
 
 <h4>মডেল ট্রেনিং</h4>
 
-<pre><code class="language-python">history = ae.fit(
-    X_train, X_train,
-    epochs=50,
-    batch_size=256,
-    validation_data=(X_val, X_val),
-    verbose=1
-)
+<pre><code class="language-python">from torch.utils.data import DataLoader, TensorDataset
 
-plt.plot(history.history['loss'], label='ট্রেন লস')
-plt.plot(history.history['val_loss'], label='ভ্যাল লস')
+X_train_t = torch.tensor(X_train, dtype=torch.float32)
+X_val_t   = torch.tensor(X_val, dtype=torch.float32)
+
+train_loader = DataLoader(TensorDataset(X_train_t, X_train_t), batch_size=256, shuffle=True)
+val_loader   = DataLoader(TensorDataset(X_val_t, X_val_t),   batch_size=256)
+
+history = {'loss': [], 'val_loss': []}
+
+for epoch in range(50):
+    ae.train()
+    train_loss = 0.0
+    for xb, _ in train_loader:
+        optimizer.zero_grad()
+        reconstructed = ae(xb)
+        loss = criterion(reconstructed, xb)
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item() * xb.size(0)
+    train_loss /= len(train_loader.dataset)
+
+    ae.eval()
+    val_loss = 0.0
+    with torch.no_grad():
+        for xb, _ in val_loader:
+            reconstructed = ae(xb)
+            val_loss += criterion(reconstructed, xb).item() * xb.size(0)
+    val_loss /= len(val_loader.dataset)
+
+    history['loss'].append(train_loss)
+    history['val_loss'].append(val_loss)
+
+plt.plot(history['loss'], label='ট্রেন লস')
+plt.plot(history['val_loss'], label='ভ্যাল লস')
 plt.xlabel('Epoch')
 plt.ylabel('MSE Loss')
 plt.legend()
@@ -94,7 +124,9 @@ plt.show()
 <h3>পুনর্নির্মাণ ত্রুটি হিসাব</h3>
 
 <pre><code class="language-python"># সম্পূর্ণ ডেটাসেটের পুনর্নির্মাণ ত্রুটি
-X_pred = ae.predict(X)
+ae.eval()
+with torch.no_grad():
+    X_pred = ae(torch.tensor(X, dtype=torch.float32)).numpy()
 reconstruction_errors = np.mean(np.power(X - X_pred, 2), axis=1)
 
 # স্বাভাবিক vs জালিয়াতির ত্রুটি বিতরণ
@@ -141,29 +173,39 @@ print(f"সর্বোচ্চ F1: {f1_scores.max():.4f}")
 
 <h3>ভ্যারিয়েশনাল অটোএনকোডার দিয়ে তুলনা</h3>
 
-<pre><code class="language-python">class Sampling(keras.layers.Layer):
-    def call(self, inputs):
-        z_mean, z_log_var = inputs
-        batch = tf.shape(z_mean)[0]
-        dim = tf.shape(z_mean)[1]
-        epsilon = tf.random.normal(shape=(batch, dim))
-        return z_mean + tf.exp(0.5 * z_log_var) * epsilon
+<pre><code class="language-python">class Sampling(nn.Module):
+    def forward(self, z_mean, z_log_var):
+        epsilon = torch.randn_like(z_mean)
+        return z_mean + torch.exp(0.5 * z_log_var) * epsilon
+
+class VAEEncoder(nn.Module):
+    def __init__(self, input_dim, latent_dim=8):
+        super().__init__()
+        self.fc = nn.Linear(input_dim, 16)
+        self.z_mean = nn.Linear(16, latent_dim)
+        self.z_log_var = nn.Linear(16, latent_dim)
+        self.sampling = Sampling()
+
+    def forward(self, x):
+        h = torch.relu(self.fc(x))
+        z_mean = self.z_mean(h)
+        z_log_var = self.z_log_var(h)
+        z = self.sampling(z_mean, z_log_var)
+        return z_mean, z_log_var, z
+
+class VAEDecoder(nn.Module):
+    def __init__(self, latent_dim, input_dim):
+        super().__init__()
+        self.fc = nn.Linear(latent_dim, 16)
+        self.out = nn.Linear(16, input_dim)
+
+    def forward(self, z):
+        h = torch.relu(self.fc(z))
+        return self.out(h)   # linear output
 
 def build_vae(input_dim, latent_dim=8):
-    # এনকোডার
-    inputs = keras.Input(shape=(input_dim,))
-    h = keras.layers.Dense(16, activation='relu')(inputs)
-    z_mean = keras.layers.Dense(latent_dim)(h)
-    z_log_var = keras.layers.Dense(latent_dim)(h)
-    z = Sampling()([z_mean, z_log_var])
-    encoder = keras.Model(inputs, [z_mean, z_log_var, z])
-
-    # ডিকোডার
-    latent_inputs = keras.Input(shape=(latent_dim,))
-    h_dec = keras.layers.Dense(16, activation='relu')(latent_inputs)
-    outputs = keras.layers.Dense(input_dim)(h_dec)
-    decoder = keras.Model(latent_inputs, outputs)
-
+    encoder = VAEEncoder(input_dim, latent_dim)
+    decoder = VAEDecoder(latent_dim, input_dim)
     return encoder, decoder
 
 # VAE ট্রেনিং ও তুলনা

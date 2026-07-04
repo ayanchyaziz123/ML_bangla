@@ -1,7 +1,7 @@
 export const autoencoder_1_basics = {
   slug: 'autoencoder-1-basics',
   title: 'অটোএনকোডার: কম্প্রেশন দিয়ে শেখা',
-  description: 'অটোএনকোডারের আর্কিটেকচার, রিকনস্ট্রাকশন লস, লেটেন্ট স্পেস এবং Keras দিয়ে MNIST ডেটাসেটে সম্পূর্ণ ইমপ্লিমেন্টেশন।',
+  description: 'অটোএনকোডারের আর্কিটেকচার, রিকনস্ট্রাকশন লস, লেটেন্ট স্পেস এবং PyTorch দিয়ে MNIST ডেটাসেটে সম্পূর্ণ ইমপ্লিমেন্টেশন।',
   date: 'মে ২০২৫',
   category: 'অটোএনকোডার',
   readTime: 12,
@@ -86,22 +86,23 @@ export const autoencoder_1_basics = {
       <strong>গ) ইন্টারপোলেশন:</strong> দুটি লেটেন্ট ভেক্টরের মাঝামাঝি বিন্দু ডিকোড করলে দুটি ডেটার মিশ্রণ পাওয়া যায়।
     </p>
 
-    <h3>৬. Keras দিয়ে MNIST অটোএনকোডার</h3>
+    <h3>৬. PyTorch দিয়ে MNIST অটোএনকোডার</h3>
     <p>
       এবার সম্পূর্ণ কোড লিখে দেখি। আমরা MNIST হাতের অঙ্ক ডেটাসেটে একটি সাধারণ ডেন্স অটোএনকোডার তৈরি করব।
     </p>
     <pre><code>import numpy as np
 import matplotlib.pyplot as plt
-from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras.datasets import mnist
+import torch
+from torchvision import datasets, transforms
 
 # ডেটা লোড এবং প্রিপ্রসেস
-(x_train, _), (x_test, _) = mnist.load_data()
+transform = transforms.ToTensor()
+train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+test_dataset  = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
 
 # ০ থেকে ১ এর মধ্যে নর্মালাইজ করা
-x_train = x_train.astype('float32') / 255.0
-x_test  = x_test.astype('float32')  / 255.0
+x_train = train_dataset.data.float() / 255.0
+x_test  = test_dataset.data.float()  / 255.0
 
 # ২৮x২৮ ছবিকে ৭৮৪ ডিমেনশনের ভেক্টরে রূপান্তর
 x_train = x_train.reshape(-1, 784)
@@ -110,59 +111,106 @@ x_test  = x_test.reshape(-1, 784)
 print(f"Training shape: {x_train.shape}")
 print(f"Test shape:     {x_test.shape}")</code></pre>
 
-    <pre><code># এনকোডার তৈরি
+    <pre><code>import torch.nn as nn
+
+# এনকোডার তৈরি
 encoding_dim = 32  # লেটেন্ট স্পেসের আকার
 
-encoder_input = keras.Input(shape=(784,), name='encoder_input')
-encoded = layers.Dense(128, activation='relu', name='enc_1')(encoder_input)
-encoded = layers.Dense(64,  activation='relu', name='enc_2')(encoded)
-latent  = layers.Dense(encoding_dim, activation='relu', name='latent')(encoded)
+class Encoder(nn.Module):
+    def __init__(self, encoding_dim=32):
+        super().__init__()
+        self.enc_1 = nn.Linear(784, 128)
+        self.enc_2 = nn.Linear(128, 64)
+        self.latent = nn.Linear(64, encoding_dim)
+        self.relu = nn.ReLU()
 
-encoder = keras.Model(encoder_input, latent, name='encoder')
-encoder.summary()</code></pre>
+    def forward(self, x):
+        x = self.relu(self.enc_1(x))
+        x = self.relu(self.enc_2(x))
+        return self.relu(self.latent(x))
+
+encoder = Encoder(encoding_dim)
+print(encoder)</code></pre>
 
     <pre><code># ডিকোডার তৈরি
-decoder_input = keras.Input(shape=(encoding_dim,), name='decoder_input')
-decoded = layers.Dense(64,  activation='relu', name='dec_1')(decoder_input)
-decoded = layers.Dense(128, activation='relu', name='dec_2')(decoded)
-# Sigmoid কারণ পিক্সেল মান ০ থেকে ১ এর মধ্যে
-output  = layers.Dense(784, activation='sigmoid', name='output')(decoded)
+class Decoder(nn.Module):
+    def __init__(self, encoding_dim=32):
+        super().__init__()
+        self.dec_1 = nn.Linear(encoding_dim, 64)
+        self.dec_2 = nn.Linear(64, 128)
+        # Sigmoid কারণ পিক্সেল মান ০ থেকে ১ এর মধ্যে
+        self.output_layer = nn.Linear(128, 784)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
 
-decoder = keras.Model(decoder_input, output, name='decoder')</code></pre>
+    def forward(self, z):
+        z = self.relu(self.dec_1(z))
+        z = self.relu(self.dec_2(z))
+        return self.sigmoid(self.output_layer(z))
+
+decoder = Decoder(encoding_dim)</code></pre>
 
     <pre><code># সম্পূর্ণ অটোএনকোডার
-autoencoder_input  = keras.Input(shape=(784,), name='ae_input')
-encoded_output     = encoder(autoencoder_input)
-reconstructed      = decoder(encoded_output)
+class Autoencoder(nn.Module):
+    def __init__(self, encoder, decoder):
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
 
-autoencoder = keras.Model(autoencoder_input, reconstructed, name='autoencoder')
+    def forward(self, x):
+        encoded = self.encoder(x)
+        return self.decoder(encoded)
 
-autoencoder.compile(
-    optimizer='adam',
-    loss='binary_crossentropy'
-)
-autoencoder.summary()</code></pre>
+autoencoder = Autoencoder(encoder, decoder)
+
+criterion = nn.BCELoss()
+optimizer = torch.optim.Adam(autoencoder.parameters(), lr=0.001)
+print(autoencoder)</code></pre>
 
     <pre><code># ট্রেনিং
-history = autoencoder.fit(
-    x_train, x_train,       # ইনপুট এবং টার্গেট একই
-    epochs=30,
-    batch_size=256,
-    shuffle=True,
-    validation_data=(x_test, x_test),
-    verbose=1
-)</code></pre>
+from torch.utils.data import DataLoader, TensorDataset
+
+train_loader = DataLoader(TensorDataset(x_train, x_train), batch_size=256, shuffle=True)
+test_loader  = DataLoader(TensorDataset(x_test, x_test),  batch_size=256)
+
+history = {'loss': [], 'val_loss': []}
+
+for epoch in range(30):
+    autoencoder.train()
+    train_loss = 0.0
+    for xb, _ in train_loader:              # ইনপুট এবং টার্গেট একই
+        optimizer.zero_grad()
+        reconstructed = autoencoder(xb)
+        loss = criterion(reconstructed, xb)
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item() * xb.size(0)
+    train_loss /= len(train_loader.dataset)
+
+    autoencoder.eval()
+    val_loss = 0.0
+    with torch.no_grad():
+        for xb, _ in test_loader:
+            reconstructed = autoencoder(xb)
+            val_loss += criterion(reconstructed, xb).item() * xb.size(0)
+    val_loss /= len(test_loader.dataset)
+
+    history['loss'].append(train_loss)
+    history['val_loss'].append(val_loss)
+    print(f"Epoch {epoch+1}: loss={train_loss:.4f}, val_loss={val_loss:.4f}")</code></pre>
 
     <pre><code># রিকনস্ট্রাকশন দেখা
-x_test_encoded = encoder.predict(x_test)
-x_test_decoded = decoder.predict(x_test_encoded)
+autoencoder.eval()
+with torch.no_grad():
+    x_test_encoded = encoder(x_test)
+    x_test_decoded = decoder(x_test_encoded).numpy()
 
 n = 10
 plt.figure(figsize=(20, 4))
 for i in range(n):
     # মূল ছবি
     ax = plt.subplot(2, n, i + 1)
-    plt.imshow(x_test[i].reshape(28, 28), cmap='gray')
+    plt.imshow(x_test[i].numpy().reshape(28, 28), cmap='gray')
     plt.title('Original')
     plt.axis('off')
 
@@ -180,15 +228,15 @@ print(f"Latent space shape: {x_test_encoded.shape}")</code></pre>
     <pre><code># লেটেন্ট স্পেস ভিজুয়ালাইজেশন
 from sklearn.manifold import TSNE
 
-# শুধু ৩০০০ স্যাম্পল নেওয়া (t-SNE ধীর)
-(_, y_test_labels), _ = mnist.load_data()[1], None
-(_, y_labels), (_, y_test_labels) = mnist.load_data()
+y_test_labels = test_dataset.targets.numpy()
 
+# শুধু ৩০০০ স্যাম্পল নেওয়া (t-SNE ধীর)
 sample_idx = np.random.choice(len(x_test), 3000, replace=False)
 x_sample   = x_test[sample_idx]
 y_sample   = y_test_labels[sample_idx]
 
-latent_sample = encoder.predict(x_sample)
+with torch.no_grad():
+    latent_sample = encoder(x_sample).numpy()
 
 tsne = TSNE(n_components=2, random_state=42, perplexity=30)
 latent_2d = tsne.fit_transform(latent_sample)
@@ -206,8 +254,8 @@ plt.show()</code></pre>
     <h3>৭. লস কার্ভ বিশ্লেষণ</h3>
     <pre><code># ট্রেনিং লস কার্ভ
 plt.figure(figsize=(10, 5))
-plt.plot(history.history['loss'],     label='Training Loss',   linewidth=2)
-plt.plot(history.history['val_loss'], label='Validation Loss', linewidth=2)
+plt.plot(history['loss'],     label='Training Loss',   linewidth=2)
+plt.plot(history['val_loss'], label='Validation Loss', linewidth=2)
 plt.xlabel('Epoch', fontsize=13)
 plt.ylabel('Binary Cross-Entropy Loss', fontsize=13)
 plt.title('Autoencoder Training Loss', fontsize=15)

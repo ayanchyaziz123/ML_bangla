@@ -9,73 +9,73 @@ export const cnn_6_project = {
     <h3>১. CIFAR-10: Data Loading ও Preprocessing</h3>
     <p>CIFAR-10 dataset-এ 60,000টি 32×32 RGB image এবং 10টি class: airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck।</p>
     <p>Training: 50,000 | Test: 10,000 | প্রতি class: 6,000 images।</p>
-    <pre><code>import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers, models
-from tensorflow.keras.datasets import cifar10
+    <pre><code>import torch
+import torch.nn as nn
+import torchvision
+import torchvision.transforms as transforms
 import numpy as np
 import matplotlib.pyplot as plt
 
 # Data load
-(x_train, y_train), (x_test, y_test) = cifar10.load_data()
+transform = transforms.ToTensor()
+train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+test_set  = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
 CLASS_NAMES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
                'dog', 'frog', 'horse', 'ship', 'truck']
 
-print(f"Training samples: {x_train.shape}")    # (50000, 32, 32, 3)
-print(f"Test samples:     {x_test.shape}")     # (10000, 32, 32, 3)
-print(f"Pixel value range: {x_train.min()} - {x_train.max()}")
+print(f"Training samples: {len(train_set)}")    # 50000, each (3, 32, 32)
+print(f"Test samples:     {len(test_set)}")     # 10000, each (3, 32, 32)
 
-# Normalize: [0, 255] → [0.0, 1.0]
-x_train = x_train.astype('float32') / 255.0
-x_test  = x_test.astype('float32')  / 255.0
+sample_img, _ = train_set[0]
+print(f"Pixel value range: {sample_img.min():.3f} - {sample_img.max():.3f}")   # already [0.0, 1.0]
 
-# One-hot encode labels
-y_train_oh = tf.keras.utils.to_categorical(y_train, 10)
-y_test_oh  = tf.keras.utils.to_categorical(y_test,  10)
+# transforms.ToTensor() already scales [0, 255] → [0.0, 1.0] and permutes to (C, H, W)
 
 # Per-channel normalization (ImageNet mean/std — for pretrained models)
-IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
-IMAGENET_STD  = np.array([0.229, 0.224, 0.225])
-
-def normalize_imagenet(x):
-    return (x - IMAGENET_MEAN) / IMAGENET_STD
-
-x_train_norm = normalize_imagenet(x_train)
-x_test_norm  = normalize_imagenet(x_test)
+imagenet_normalize = transforms.Normalize(
+    mean=[0.485, 0.456, 0.406],
+    std=[0.229, 0.224, 0.225],
+)
+x_norm = imagenet_normalize(sample_img)
 
 # Dataset statistics
+labels = np.array(train_set.targets)
 print(f"\nPer-class distribution:")
 for i, name in enumerate(CLASS_NAMES):
-    count = np.sum(y_train == i)
+    count = np.sum(labels == i)
     print(f"  {name}: {count} train samples")
 </code></pre>
 
     <h3>২. Data Augmentation Pipeline</h3>
     <p>Data augmentation training data artificially বাড়ায় এবং overfitting কমায়।</p>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers
+    <pre><code>import torch
+from torch.utils.data import DataLoader
+import torchvision
+import torchvision.transforms as transforms
+import numpy as np
 
-# Keras preprocessing layers দিয়ে augmentation pipeline
+# torchvision transforms দিয়ে augmentation pipeline
 def build_augmentation_pipeline():
     """
-    Training-এ augment, inference-এ identity
+    Training-এ augment, inference-এ শুধু ToTensor (identity augmentation)
     """
-    return keras.Sequential([
-        layers.RandomFlip("horizontal"),          # বাম-ডান flip
-        layers.RandomRotation(0.1),               # ±10% rotation
-        layers.RandomZoom(0.1),                   # ±10% zoom
-        layers.RandomTranslation(0.1, 0.1),       # Shift
-        layers.RandomContrast(0.2),               # Contrast adjust
-    ], name="augmentation")
+    return transforms.Compose([
+        transforms.RandomHorizontalFlip(),                    # বাম-ডান flip
+        transforms.RandomRotation(10),                        # ±10% rotation-এর কাছাকাছি
+        transforms.RandomResizedCrop(32, scale=(0.9, 1.0)),   # ±10% zoom
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Shift
+        transforms.ColorJitter(contrast=0.2),                 # Contrast adjust
+        transforms.ToTensor(),
+    ])
 
 augmentation = build_augmentation_pipeline()
 
 # Cutout augmentation (manual): random rectangle zero করা
 def cutout(image, n_holes=1, length=8):
-    """Cutout regularization"""
-    h, w = image.shape[:2]
-    mask = np.ones((h, w), dtype=np.float32)
+    """Cutout regularization — image: (C, H, W) tensor"""
+    h, w = image.shape[1:]
+    mask = torch.ones((h, w), dtype=torch.float32)
 
     for _ in range(n_holes):
         y = np.random.randint(h)
@@ -86,228 +86,280 @@ def cutout(image, n_holes=1, length=8):
         x2 = np.clip(x + length // 2, 0, w)
         mask[y1:y2, x1:x2] = 0.0
 
-    return image * mask[:, :, np.newaxis]
+    return image * mask.unsqueeze(0)
 
 # Augmented dataset
-def create_tf_dataset(x, y, batch_size=128, training=False):
-    dataset = tf.data.Dataset.from_tensor_slices((x, y))
-    if training:
-        dataset = dataset.shuffle(10000)
-        dataset = dataset.map(
-            lambda img, label: (augmentation(img, training=True), label),
-            num_parallel_calls=tf.data.AUTOTUNE
-        )
-    dataset = dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
-    return dataset
+train_set_aug  = torchvision.datasets.CIFAR10(root='./data', train=True,  download=True, transform=augmentation)
+test_set_plain = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transforms.ToTensor())
 
-train_ds = create_tf_dataset(x_train, y_train_oh, training=True)
-test_ds  = create_tf_dataset(x_test,  y_test_oh,  training=False)
+train_ds = DataLoader(train_set_aug,  batch_size=128, shuffle=True)
+test_ds  = DataLoader(test_set_plain, batch_size=128, shuffle=False)
 </code></pre>
 
     <h3>৩. Model 1: Simple CNN (Baseline)</h3>
-    <pre><code>def build_simple_cnn(num_classes=10):
-    """3 Conv blocks + Flatten + Dense"""
-    inputs = tf.keras.Input(shape=(32, 32, 3))
+    <pre><code>import torch
+import torch.nn as nn
 
-    # Block 1
-    x = layers.Conv2D(32, (3,3), padding='same', use_bias=False)(inputs)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.Conv2D(32, (3,3), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.MaxPooling2D((2,2))(x)     # 16x16x32
-    x = layers.Dropout(0.2)(x)
+class SimpleCNN(nn.Module):
+    """3 Conv blocks + Flatten + Linear"""
+    def __init__(self, num_classes=10):
+        super().__init__()
+        # Block 1
+        self.conv1 = nn.Conv2d(3, 32, 3, padding=1, bias=False)
+        self.bn1   = nn.BatchNorm2d(32)
+        self.relu1 = nn.ReLU()
+        self.conv2 = nn.Conv2d(32, 32, 3, padding=1, bias=False)
+        self.bn2   = nn.BatchNorm2d(32)
+        self.relu2 = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(2)     # 16x16x32
+        self.drop1 = nn.Dropout(0.2)
 
-    # Block 2
-    x = layers.Conv2D(64, (3,3), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.Conv2D(64, (3,3), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.MaxPooling2D((2,2))(x)     # 8x8x64
-    x = layers.Dropout(0.3)(x)
+        # Block 2
+        self.conv3 = nn.Conv2d(32, 64, 3, padding=1, bias=False)
+        self.bn3   = nn.BatchNorm2d(64)
+        self.relu3 = nn.ReLU()
+        self.conv4 = nn.Conv2d(64, 64, 3, padding=1, bias=False)
+        self.bn4   = nn.BatchNorm2d(64)
+        self.relu4 = nn.ReLU()
+        self.pool2 = nn.MaxPool2d(2)     # 8x8x64
+        self.drop2 = nn.Dropout(0.3)
 
-    # Block 3
-    x = layers.Conv2D(128, (3,3), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.Conv2D(128, (3,3), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.MaxPooling2D((2,2))(x)     # 4x4x128
+        # Block 3
+        self.conv5 = nn.Conv2d(64, 128, 3, padding=1, bias=False)
+        self.bn5   = nn.BatchNorm2d(128)
+        self.relu5 = nn.ReLU()
+        self.conv6 = nn.Conv2d(128, 128, 3, padding=1, bias=False)
+        self.bn6   = nn.BatchNorm2d(128)
+        self.relu6 = nn.ReLU()
+        self.pool3 = nn.MaxPool2d(2)     # 4x4x128
 
-    # Classifier
-    x = layers.Flatten()(x)              # 4*4*128 = 2048
-    x = layers.Dense(256, activation='relu')(x)
-    x = layers.Dropout(0.5)(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
+        # Classifier
+        self.flatten = nn.Flatten()             # 4*4*128 = 2048
+        self.fc1 = nn.Linear(2048, 256)
+        self.relu7 = nn.ReLU()
+        self.drop3 = nn.Dropout(0.5)
+        self.fc2 = nn.Linear(256, num_classes)
 
-    return models.Model(inputs, outputs, name="SimpleCNN")
+    def forward(self, x):
+        x = self.relu1(self.bn1(self.conv1(x)))
+        x = self.relu2(self.bn2(self.conv2(x)))
+        x = self.drop1(self.pool1(x))
 
-model1 = build_simple_cnn()
-print(f"Simple CNN params: {model1.count_params():,}")
+        x = self.relu3(self.bn3(self.conv3(x)))
+        x = self.relu4(self.bn4(self.conv4(x)))
+        x = self.drop2(self.pool2(x))
+
+        x = self.relu5(self.bn5(self.conv5(x)))
+        x = self.relu6(self.bn6(self.conv6(x)))
+        x = self.pool3(x)
+
+        x = self.flatten(x)
+        x = self.relu7(self.fc1(x))
+        x = self.drop3(x)
+        return self.fc2(x)
+
+model1 = SimpleCNN()
+model1_params = sum(p.numel() for p in model1.parameters())
+print(f"Simple CNN params: {model1_params:,}")
 </code></pre>
 
     <h3>৪. Model 2: ResNet-Style Skip Connections</h3>
-    <pre><code>def residual_block_cifar(x, filters, stride=1):
+    <pre><code>import torch
+import torch.nn as nn
+
+class ResidualBlockCIFAR(nn.Module):
     """ResNet block adapted for CIFAR-10 (32x32 input)"""
-    shortcut = x
+    def __init__(self, in_channels, filters, stride=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, filters, 3, stride=stride, padding=1, bias=False)
+        self.bn1   = nn.BatchNorm2d(filters)
+        self.relu1 = nn.ReLU()
+        self.conv2 = nn.Conv2d(filters, filters, 3, padding=1, bias=False)
+        self.bn2   = nn.BatchNorm2d(filters)
 
-    x = layers.Conv2D(filters, (3,3), strides=stride, padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.Conv2D(filters, (3,3), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
+        self.has_shortcut = stride != 1 or in_channels != filters
+        if self.has_shortcut:
+            self.shortcut_conv = nn.Conv2d(in_channels, filters, 1, stride=stride, bias=False)
+            self.shortcut_bn   = nn.BatchNorm2d(filters)
 
-    if stride != 1 or shortcut.shape[-1] != filters:
-        shortcut = layers.Conv2D(filters, (1,1), strides=stride, use_bias=False)(shortcut)
-        shortcut = layers.BatchNormalization()(shortcut)
+        self.relu_out = nn.ReLU()
 
-    x = layers.Add()([x, shortcut])
-    x = layers.Activation('relu')(x)
-    return x
+    def forward(self, x):
+        shortcut = self.shortcut_bn(self.shortcut_conv(x)) if self.has_shortcut else x
+        y = self.relu1(self.bn1(self.conv1(x)))
+        y = self.bn2(self.conv2(y))
+        return self.relu_out(y + shortcut)
 
-def build_resnet_cifar(num_classes=10):
+class ResNetCIFAR(nn.Module):
     """ResNet-20 style for CIFAR-10"""
-    inputs = tf.keras.Input(shape=(32, 32, 3))
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.stem_conv = nn.Conv2d(3, 64, 3, padding=1, bias=False)
+        self.stem_bn   = nn.BatchNorm2d(64)
+        self.stem_relu = nn.ReLU()
 
-    x = layers.Conv2D(64, (3,3), padding='same', use_bias=False)(inputs)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
+        # Stage 1: 32x32
+        self.stage1a = ResidualBlockCIFAR(64, 64)
+        self.stage1b = ResidualBlockCIFAR(64, 64)
 
-    # Stage 1: 32x32
-    x = residual_block_cifar(x, 64)
-    x = residual_block_cifar(x, 64)
+        # Stage 2: 16x16 (stride=2 downsamples)
+        self.stage2a = ResidualBlockCIFAR(64, 128, stride=2)
+        self.stage2b = ResidualBlockCIFAR(128, 128)
 
-    # Stage 2: 16x16 (stride=2 downsamples)
-    x = residual_block_cifar(x, 128, stride=2)
-    x = residual_block_cifar(x, 128)
+        # Stage 3: 8x8
+        self.stage3a = ResidualBlockCIFAR(128, 256, stride=2)
+        self.stage3b = ResidualBlockCIFAR(256, 256)
 
-    # Stage 3: 8x8
-    x = residual_block_cifar(x, 256, stride=2)
-    x = residual_block_cifar(x, 256)
+        # Stage 4: 4x4
+        self.stage4a = ResidualBlockCIFAR(256, 512, stride=2)
 
-    # Stage 4: 4x4
-    x = residual_block_cifar(x, 512, stride=2)
+        self.gap     = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()
+        self.dropout = nn.Dropout(0.3)
+        self.fc      = nn.Linear(512, num_classes)
 
-    x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dropout(0.3)(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
+    def forward(self, x):
+        x = self.stem_relu(self.stem_bn(self.stem_conv(x)))
 
-    return models.Model(inputs, outputs, name="ResNetCIFAR")
+        x = self.stage1a(x)
+        x = self.stage1b(x)
 
-model2 = build_resnet_cifar()
-print(f"ResNet CIFAR params: {model2.count_params():,}")
+        x = self.stage2a(x)
+        x = self.stage2b(x)
+
+        x = self.stage3a(x)
+        x = self.stage3b(x)
+
+        x = self.stage4a(x)
+
+        x = self.gap(x)
+        x = self.flatten(x)
+        x = self.dropout(x)
+        return self.fc(x)
+
+model2 = ResNetCIFAR()
+model2_params = sum(p.numel() for p in model2.parameters())
+print(f"ResNet CIFAR params: {model2_params:,}")
 </code></pre>
 
     <h3>৫. Model 3: MobileNetV2 Transfer Learning</h3>
-    <pre><code>def build_mobilenet_transfer(num_classes=10, fine_tune_from=100):
+    <pre><code>import torch
+import torch.nn as nn
+import torchvision
+
+class MobileNetV2Transfer(nn.Module):
     """
     MobileNetV2 transfer learning:
     1. Feature extraction (base frozen)
     2. Fine-tuning (last layers unfrozen)
     """
-    # CIFAR-10 images ছোট (32x32) → upscale করি
-    inputs = tf.keras.Input(shape=(32, 32, 3))
-    x = layers.Resizing(96, 96)(inputs)   # MobileNetV2 ভালো কাজ করে ≥96x96 তে
+    def __init__(self, num_classes=10):
+        super().__init__()
+        # Pre-trained base (ImageNet weights)
+        base_model = torchvision.models.mobilenet_v2(
+            weights=torchvision.models.MobileNet_V2_Weights.IMAGENET1K_V1
+        )
+        self.base_model = base_model.features
+        for p in self.base_model.parameters():
+            p.requires_grad = False   # Phase 1: Feature extraction
 
-    # Pre-trained base (ImageNet weights)
-    base_model = tf.keras.applications.MobileNetV2(
-        input_shape=(96, 96, 3),
-        include_top=False,
-        weights='imagenet'
-    )
-    base_model.trainable = False  # Phase 1: Feature extraction
+        self.gap      = nn.AdaptiveAvgPool2d(1)
+        self.flatten  = nn.Flatten()
+        self.dropout1 = nn.Dropout(0.3)
+        self.fc1      = nn.Linear(1280, 128)
+        self.relu     = nn.ReLU()
+        self.dropout2 = nn.Dropout(0.2)
+        self.fc2      = nn.Linear(128, num_classes)
 
-    x = base_model(x, training=False)
-    x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dropout(0.3)(x)
-    x = layers.Dense(128, activation='relu')(x)
-    x = layers.Dropout(0.2)(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
+    def forward(self, x):
+        # CIFAR-10 images ছোট (32x32) → upscale করি
+        x = nn.functional.interpolate(x, size=(96, 96), mode='bilinear', align_corners=False)  # MobileNetV2 ভালো কাজ করে ≥96x96 তে
+        x = self.base_model(x)
+        x = self.gap(x)
+        x = self.flatten(x)
+        x = self.dropout1(x)
+        x = self.relu(self.fc1(x))
+        x = self.dropout2(x)
+        return self.fc2(x)
 
-    model = models.Model(inputs, outputs, name="MobileNetV2Transfer")
-    return model, base_model
-
-model3, base_model = build_mobilenet_transfer()
-print(f"MobileNetV2 Transfer params (total):     {model3.count_params():,}")
-print(f"MobileNetV2 Transfer params (trainable): {sum(v.numpy().size for v in model3.trainable_variables):,}")
+model3 = MobileNetV2Transfer()
+total_params     = sum(p.numel() for p in model3.parameters())
+trainable_params = sum(p.numel() for p in model3.parameters() if p.requires_grad)
+print(f"MobileNetV2 Transfer params (total):     {total_params:,}")
+print(f"MobileNetV2 Transfer params (trainable): {trainable_params:,}")
 
 # Phase 1: Feature extraction training
-model3.compile(
-    optimizer=tf.keras.optimizers.Adam(0.001),
-    loss='categorical_crossentropy',
-    metrics=['accuracy']
-)
-
-callbacks = [
-    tf.keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True),
-    tf.keras.callbacks.ReduceLROnPlateau(patience=3, factor=0.5, min_lr=1e-6)
-]
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model3.parameters()), lr=0.001)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, factor=0.5, min_lr=1e-6)
+patience  = 5   # early stopping patience
 
 # Phase 1 training (5 epochs sufficient with frozen base)
 print("Phase 1: Feature extraction...")
-# history3_phase1 = model3.fit(train_ds, epochs=10, validation_data=test_ds, callbacks=callbacks)
+# for epoch in range(10):
+#     ... standard training loop, tracking best val loss for early stopping ...
 
 # Phase 2: Fine-tuning
 print("Phase 2: Fine-tuning last layers...")
-base_model.trainable = True
-# শুধু শেষ 50 layers fine-tune
-for layer in base_model.layers[:-50]:
-    layer.trainable = False
+for p in model3.base_model.parameters():
+    p.requires_grad = True
+# শুধু শেষ কয়েকটি child layer fine-tune (বাকি সব আবার freeze)
+base_children = list(model3.base_model.children())
+for layer in base_children[:-4]:
+    for p in layer.parameters():
+        p.requires_grad = False
 
-model3.compile(
-    optimizer=tf.keras.optimizers.Adam(1e-5),  # Lower LR for fine-tuning
-    loss='categorical_crossentropy',
-    metrics=['accuracy']
-)
-# history3_phase2 = model3.fit(train_ds, epochs=10, validation_data=test_ds, callbacks=callbacks)
+optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model3.parameters()), lr=1e-5)  # Lower LR for fine-tuning
+# for epoch in range(10):
+#     ... continue training loop for fine-tuning phase ...
 </code></pre>
 
     <h3>৬. Training সব Model ও Comparison</h3>
     <pre><code>import time
 
-def train_model(model, train_ds, test_ds, epochs=50, model_name="model"):
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(0.001),
-        loss='categorical_crossentropy',
-        metrics=['accuracy']
-    )
+def train_model(model, train_ds, test_ds, epochs=50, patience=15, model_name="model"):
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, factor=0.5, min_lr=1e-6, verbose=True)
 
-    callbacks = [
-        tf.keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss', patience=5, factor=0.5,
-            min_lr=1e-6, verbose=1
-        ),
-        tf.keras.callbacks.EarlyStopping(
-            monitor='val_accuracy', patience=15,
-            restore_best_weights=True
-        ),
-        tf.keras.callbacks.ModelCheckpoint(
-            f'best_{model_name}.h5',
-            save_best_only=True, monitor='val_accuracy'
-        )
-    ]
-
+    best_val_acc, epochs_no_improve, best_state = 0.0, 0, None
     start_time = time.time()
-    history = model.fit(
-        train_ds,
-        epochs=epochs,
-        validation_data=test_ds,
-        callbacks=callbacks,
-        verbose=1
-    )
-    train_time = time.time() - start_time
 
-    test_loss, test_acc = model.evaluate(test_ds, verbose=0)
+    for epoch in range(epochs):
+        model.train()
+        for xb, yb in train_ds:
+            optimizer.zero_grad()
+            loss = criterion(model(xb), yb)
+            loss.backward()
+            optimizer.step()
+
+        model.eval()
+        correct, total, val_loss_sum = 0, 0, 0.0
+        with torch.no_grad():
+            for xb, yb in test_ds:
+                out = model(xb)
+                val_loss_sum += criterion(out, yb).item()
+                correct += (out.argmax(dim=1) == yb).sum().item()
+                total   += yb.size(0)
+        val_acc = correct / total
+        scheduler.step(val_loss_sum)
+
+        if val_acc > best_val_acc:
+            best_val_acc, best_state, epochs_no_improve = val_acc, model.state_dict(), 0
+            torch.save(best_state, f'best_{model_name}.pt')   # checkpoint the best model
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:   # early stopping
+                break
+
+    model.load_state_dict(best_state)   # restore best weights
+    train_time = time.time() - start_time
+    total_params = sum(p.numel() for p in model.parameters())
 
     return {
-        'history': history,
-        'test_accuracy': test_acc,
+        'test_accuracy': best_val_acc,
         'train_time_min': train_time / 60,
-        'params': model.count_params()
+        'params': total_params
     }
 
 # Train all models
@@ -319,10 +371,10 @@ for m, name in [(model1, "SimpleCNN"), (model2, "ResNetCIFAR")]:
 
 # Comparison table print
 print("\n" + "="*70)
-print(f"{'Model':<20} {'Params':>12} {'Time(min)':>10} {'Test Acc':>10}")
+print(f"{'Model':&lt;20} {'Params':>12} {'Time(min)':>10} {'Test Acc':>10}")
 print("="*70)
 for name, res in results.items():
-    print(f"{name:<20} {res['params']:>12,} {res['train_time_min']:>10.1f} {res['test_accuracy']:>10.4f}")
+    print(f"{name:&lt;20} {res['params']:>12,} {res['train_time_min']:>10.1f} {res['test_accuracy']:>10.4f}")
 </code></pre>
 
     <h3>৭. Grad-CAM: Model কোথায় তাকাচ্ছে?</h3>
@@ -335,56 +387,53 @@ for name, res in results.items():
       <li>Weighted sum of activation maps → heatmap</li>
       <li>ReLU apply → original image-এ overlay</li>
     </ol>
-    <pre><code>import tensorflow as tf
+    <pre><code>import torch
+import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-def grad_cam(model, img_array, last_conv_layer_name, pred_index=None):
+def grad_cam(model, img_tensor, target_layer, pred_index=None):
     """
-    Grad-CAM implementation using tf.GradientTape
-    img_array: (1, H, W, C) preprocessed image
-    last_conv_layer_name: name of last convolutional layer
+    Grad-CAM implementation using forward/backward hooks
+    img_tensor: (1, C, H, W) preprocessed image
+    target_layer: the last convolutional nn.Module layer
     pred_index: class index (None = top prediction)
     """
-    # Gradient model: inputs → [last conv output, final predictions]
-    grad_model = tf.keras.Model(
-        inputs=model.inputs,
-        outputs=[
-            model.get_layer(last_conv_layer_name).output,
-            model.output
-        ]
-    )
+    activations, gradients = [], []
+    fwd_handle = target_layer.register_forward_hook(lambda m, i, o: activations.append(o))
+    bwd_handle = target_layer.register_full_backward_hook(lambda m, gi, go: gradients.append(go[0]))
 
-    with tf.GradientTape() as tape:
-        conv_outputs, predictions = grad_model(img_array, training=False)
-        if pred_index is None:
-            pred_index = tf.argmax(predictions[0])
-        class_channel = predictions[:, pred_index]
+    model.eval()
+    predictions = model(img_tensor)
+    if pred_index is None:
+        pred_index = predictions[0].argmax().item()
+    model.zero_grad()
+    predictions[0, pred_index].backward()
+    fwd_handle.remove(); bwd_handle.remove()
 
     # Class score-এর সাপেক্ষে last conv layer-এর gradient
-    grads = tape.gradient(class_channel, conv_outputs)
+    conv_outputs = activations[0][0]        # (C, H, W)
+    grads        = gradients[0][0]          # (C, H, W)
 
     # Global average pooling of gradients → importance weights
-    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+    pooled_grads = grads.mean(dim=(1, 2))
 
     # Weighted combination of feature maps
-    conv_outputs = conv_outputs[0]  # (H, W, C)
-    heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
-    heatmap = tf.squeeze(heatmap)
+    heatmap = (conv_outputs * pooled_grads[:, None, None]).sum(dim=0)
 
     # ReLU: negative contributions সরাও
-    heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-8)
+    heatmap = torch.relu(heatmap) / (heatmap.max() + 1e-8)
 
-    return heatmap.numpy()
+    return heatmap.detach().numpy(), pred_index
 
 def overlay_gradcam(img, heatmap, alpha=0.4):
-    """Grad-CAM heatmap original image-এ overlay করো"""
+    """Grad-CAM heatmap original image-এ overlay করো — img: (H, W, C) numpy array, [0,1] range"""
     # Heatmap resize to image size
-    heatmap_resized = tf.image.resize(
-        heatmap[..., np.newaxis],
-        (img.shape[0], img.shape[1])
-    ).numpy()[..., 0]
+    heatmap_t = torch.from_numpy(heatmap)[None, None]
+    heatmap_resized = nn.functional.interpolate(
+        heatmap_t, size=img.shape[:2], mode='bilinear', align_corners=False
+    )[0, 0].numpy()
 
     # Colormap apply
     colormap = cm.get_cmap("jet")
@@ -396,33 +445,31 @@ def overlay_gradcam(img, heatmap, alpha=0.4):
     return overlaid, heatmap_resized
 
 # Usage example
-def visualize_grad_cam(model, x_test, y_test, class_names, num_samples=5):
-    # Last conv layer name খুঁজে বের করা
-    last_conv_name = None
-    for layer in reversed(model.layers):
-        if isinstance(layer, tf.keras.layers.Conv2D):
-            last_conv_name = layer.name
-            break
-    print(f"Using last conv layer: {last_conv_name}")
+def visualize_grad_cam(model, test_set, class_names, num_samples=5):
+    # Last conv layer খুঁজে বের করা (model-এর শেষ nn.Conv2d)
+    last_conv_layer = None
+    for module in model.modules():
+        if isinstance(module, nn.Conv2d):
+            last_conv_layer = module
+    print(f"Using last conv layer: {last_conv_layer}")
 
     fig, axes = plt.subplots(num_samples, 3, figsize=(12, 4*num_samples))
 
     for i in range(num_samples):
-        img = x_test[i]
-        true_label = class_names[int(y_test[i])]
-
-        img_batch = img[np.newaxis, ...]
-        preds = model.predict(img_batch, verbose=0)
-        pred_class = np.argmax(preds[0])
-        pred_label = class_names[pred_class]
-        confidence = preds[0][pred_class]
+        img_tensor, true_idx = test_set[i]
+        true_label = class_names[true_idx]
+        img_np = img_tensor.permute(1, 2, 0).numpy()
 
         # Grad-CAM compute
-        heatmap = grad_cam(model, img_batch, last_conv_name, pred_class)
-        overlaid, _ = overlay_gradcam(img, heatmap)
+        heatmap, pred_class = grad_cam(model, img_tensor.unsqueeze(0), last_conv_layer)
+        pred_label = class_names[pred_class]
+        with torch.no_grad():
+            confidence = model(img_tensor.unsqueeze(0)).softmax(dim=1)[0, pred_class].item()
+
+        overlaid, _ = overlay_gradcam(img_np, heatmap)
 
         # Plot
-        axes[i, 0].imshow(img)
+        axes[i, 0].imshow(img_np)
         axes[i, 0].set_title(f"Original\nTrue: {true_label}")
         axes[i, 0].axis('off')
 
@@ -439,21 +486,25 @@ def visualize_grad_cam(model, x_test, y_test, class_names, num_samples=5):
     plt.show()
 
 # Call visualization
-# visualize_grad_cam(model1, x_test, y_test.flatten(), CLASS_NAMES)
+# visualize_grad_cam(model1, test_set, CLASS_NAMES)
 
 # Per-class accuracy ও confusion matrix
 from sklearn.metrics import confusion_matrix, classification_report
 import seaborn as sns
 
-def evaluate_detailed(model, x_test, y_test, class_names):
-    preds = model.predict(x_test, verbose=0)
-    y_pred = np.argmax(preds, axis=1)
-    y_true = y_test.flatten()
+def evaluate_detailed(model, test_loader, class_names):
+    model.eval()
+    all_preds, all_true = [], []
+    with torch.no_grad():
+        for xb, yb in test_loader:
+            preds = model(xb).argmax(dim=1)
+            all_preds.extend(preds.tolist())
+            all_true.extend(yb.tolist())
 
     print("\nClassification Report:")
-    print(classification_report(y_true, y_pred, target_names=class_names))
+    print(classification_report(all_true, all_preds, target_names=class_names))
 
-    cm = confusion_matrix(y_true, y_pred)
+    cm = confusion_matrix(all_true, all_preds)
     plt.figure(figsize=(10, 8))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                 xticklabels=class_names, yticklabels=class_names)
@@ -464,7 +515,7 @@ def evaluate_detailed(model, x_test, y_test, class_names):
     plt.savefig('confusion_matrix.png', dpi=150)
     plt.show()
 
-# evaluate_detailed(model1, x_test, y_test, CLASS_NAMES)
+# evaluate_detailed(model1, test_ds, CLASS_NAMES)
 
 # Final comparison table
 print("\n" + "="*60)
@@ -475,10 +526,10 @@ comparison = [
     ("ResNet with skip conn.",    2_830_026,  55, 87),
     ("MobileNetV2 (fine-tuned)", 2_300_000,  35, 91),
 ]
-print(f"{'Model':<28} {'Params':>10} {'Train(min)':>11} {'Test Acc':>9}")
+print(f"{'Model':&lt;28} {'Params':>10} {'Train(min)':>11} {'Test Acc':>9}")
 print("-"*60)
 for name, params, t, acc in comparison:
-    print(f"{name:<28} {params:>10,} {t:>11} {acc:>8}%")
+    print(f"{name:&lt;28} {params:>10,} {t:>11} {acc:>8}%")
 </code></pre>
   `,
 };

@@ -9,36 +9,39 @@ export const nn_7_project = {
     <h3>১. Fashion MNIST: Dataset পরিচয়</h3>
     <p>Fashion MNIST হলো MNIST-এর একটি কঠিন version। ৭০,০০০ grayscale image (28×28) দশটি পোশাক category-তে। MNIST digits-এর মতো simple নয় — real-world image classification challenge।</p>
     <p>Classes: T-shirt/top (0), Trouser (1), Pullover (2), Dress (3), Coat (4), Sandal (5), Shirt (6), Sneaker (7), Bag (8), Ankle boot (9)।</p>
-    <pre><code>import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers, callbacks, regularizers
+    <pre><code>import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+from torchvision import datasets, transforms
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, classification_report
 import time
 
-tf.random.set_seed(42)
+torch.manual_seed(42)
 np.random.seed(42)
 
 # Class names
 CLASS_NAMES = ['T-shirt/top','Trouser','Pullover','Dress','Coat',
                'Sandal','Shirt','Sneaker','Bag','Ankle boot']
 
-# Load data
-(X_train_full, y_train_full), (X_test, y_test) = keras.datasets.fashion_mnist.load_data()
+# Data load
+transform = transforms.Compose([transforms.ToTensor()])
+train_full = datasets.FashionMNIST(root='./data', train=True,  download=True, transform=transform)
+test_set   = datasets.FashionMNIST(root='./data', train=False, download=True, transform=transform)
 
-print("Full training set:", X_train_full.shape, y_train_full.shape)
-print("Test set:", X_test.shape, y_test.shape)
-print("Pixel range:", X_train_full.min(), "-", X_train_full.max())
+print("Full training set:", len(train_full))
+print("Test set:", len(test_set))
 </code></pre>
 
     <h3>২. Data Exploration ও Visualization</h3>
     <pre><code># Sample images visualization
 fig, axes = plt.subplots(2, 5, figsize=(12, 5))
 for i, ax in enumerate(axes.flat):
-    ax.imshow(X_train_full[i], cmap='gray')
-    ax.set_title(CLASS_NAMES[y_train_full[i]], fontsize=9)
+    img, label = train_full[i]
+    ax.imshow(img.squeeze(), cmap='gray')
+    ax.set_title(CLASS_NAMES[label], fontsize=9)
     ax.axis('off')
 plt.suptitle("Fashion MNIST Sample Images", fontsize=14)
 plt.tight_layout()
@@ -46,8 +49,9 @@ plt.savefig("fashion_samples.png")
 plt.show()
 
 # Class distribution
+train_labels = train_full.targets.numpy()
 fig, ax = plt.subplots(figsize=(10, 4))
-class_counts = np.bincount(y_train_full)
+class_counts = np.bincount(train_labels)
 bars = ax.bar(CLASS_NAMES, class_counts, color=plt.cm.tab10.colors)
 ax.set_title("Class Distribution (Training Set)")
 ax.set_ylabel("Count")
@@ -65,10 +69,12 @@ for i, (name, count) in enumerate(zip(CLASS_NAMES, class_counts)):
 </code></pre>
 
     <h3>৩. Preprocessing</h3>
-    <pre><code"># Preprocessing
+    <pre><code># Preprocessing
 # 1. Normalize 0-255 -> 0-1
-X_train_full = X_train_full.astype('float32') / 255.0
-X_test       = X_test.astype('float32') / 255.0
+X_train_full = train_full.data.float() / 255.0    # (60000, 28, 28)
+y_train_full = train_full.targets
+X_test       = test_set.data.float() / 255.0
+y_test       = test_set.targets
 
 # 2. Train/Validation split
 val_size = 5000
@@ -79,163 +85,184 @@ y_train = y_train_full[val_size:]
 
 print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
 
-# 3. Reshape for different models
+# 3. Model অনুযায়ী reshape
 X_train_flat = X_train.reshape(-1, 784)
 X_val_flat   = X_val.reshape(-1, 784)
 X_test_flat  = X_test.reshape(-1, 784)
 
-X_train_cnn = X_train[..., np.newaxis]  # (55000, 28, 28, 1)
-X_val_cnn   = X_val[..., np.newaxis]
-X_test_cnn  = X_test[..., np.newaxis]
+X_train_cnn = X_train.unsqueeze(1)   # (55000, 1, 28, 28)
+X_val_cnn   = X_val.unsqueeze(1)
+X_test_cnn  = X_test.unsqueeze(1)
 
-# Common callbacks
-def get_callbacks(model_name):
-    return [
-        callbacks.EarlyStopping(monitor='val_loss', patience=8,
-                                restore_best_weights=True, verbose=0),
-        callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5,
-                                     patience=4, min_lr=1e-6, verbose=0),
-        callbacks.ModelCheckpoint(f'{model_name}_best.keras',
-                                   monitor='val_accuracy', save_best_only=True, verbose=0)
-    ]
+# Common early-stopping helper — EarlyStopping + ModelCheckpoint-এর বদলে
+class EarlyStopper:
+    def __init__(self, model_name, patience=8):
+        self.model_name = model_name
+        self.patience = patience
+        self.best_loss = float('inf')
+        self.counter = 0
+
+    def step(self, val_loss, model):
+        if val_loss &lt; self.best_loss:
+            self.best_loss = val_loss
+            self.counter = 0
+            torch.save(model.state_dict(), f'{self.model_name}_best.pt')
+            return False       # training চালিয়ে যাও
+        self.counter += 1
+        return self.counter >= self.patience   # True -> থামো
 </code></pre>
 
     <h3>৪. তিনটি Model Build ও Train</h3>
-    <pre><code"># Model 1: Simple MLP
+    <pre><code># Model 1: Simple MLP
+class SimpleMLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(784, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, 10)
+        self.relu = nn.ReLU()
+        self.dropout1 = nn.Dropout(0.3)
+        self.dropout2 = nn.Dropout(0.2)
+
+    def forward(self, x):
+        x = self.dropout1(self.relu(self.fc1(x)))
+        x = self.dropout2(self.relu(self.fc2(x)))
+        return self.fc3(x)
+
 def build_simple_mlp():
-    model = keras.Sequential([
-        layers.Dense(256, activation='relu', input_shape=(784,)),
-        layers.Dropout(0.3),
-        layers.Dense(128, activation='relu'),
-        layers.Dropout(0.2),
-        layers.Dense(10, activation='softmax')
-    ], name='simple_mlp')
-    model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
-    return model
+    return SimpleMLP()
 
 # Model 2: Deep MLP with BN
+class DeepMLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(784, 512)
+        self.bn1 = nn.BatchNorm1d(512)
+        self.fc2 = nn.Linear(512, 256)
+        self.bn2 = nn.BatchNorm1d(256)
+        self.fc3 = nn.Linear(256, 128)
+        self.bn3 = nn.BatchNorm1d(128)
+        self.fc4 = nn.Linear(128, 10)
+        self.relu = nn.ReLU()
+        self.dropout1 = nn.Dropout(0.3)
+        self.dropout2 = nn.Dropout(0.3)
+        self.dropout3 = nn.Dropout(0.2)
+
+    def forward(self, x):
+        x = self.dropout1(self.relu(self.bn1(self.fc1(x))))
+        x = self.dropout2(self.relu(self.bn2(self.fc2(x))))
+        x = self.dropout3(self.relu(self.bn3(self.fc3(x))))
+        return self.fc4(x)
+
 def build_deep_mlp():
-    model = keras.Sequential([
-        layers.Dense(512, input_shape=(784,),
-                     kernel_regularizer=regularizers.l2(0.001)),
-        layers.BatchNormalization(),
-        layers.Activation('relu'),
-        layers.Dropout(0.3),
-
-        layers.Dense(256, kernel_regularizer=regularizers.l2(0.001)),
-        layers.BatchNormalization(),
-        layers.Activation('relu'),
-        layers.Dropout(0.3),
-
-        layers.Dense(128, kernel_regularizer=regularizers.l2(0.001)),
-        layers.BatchNormalization(),
-        layers.Activation('relu'),
-        layers.Dropout(0.2),
-
-        layers.Dense(10, activation='softmax')
-    ], name='deep_mlp')
-    model.compile(optimizer=keras.optimizers.Adam(0.001),
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
-    return model
+    return DeepMLP()
 
 # Model 3: CNN
+class CNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(1, 32, 3, padding='same')
+        self.bn1 = nn.BatchNorm2d(32)
+        self.conv2 = nn.Conv2d(32, 32, 3, padding='same')
+        self.pool1 = nn.MaxPool2d(2, 2)
+        self.dropout1 = nn.Dropout(0.25)
+
+        self.conv3 = nn.Conv2d(32, 64, 3, padding='same')
+        self.bn2 = nn.BatchNorm2d(64)
+        self.conv4 = nn.Conv2d(64, 64, 3, padding='same')
+        self.pool2 = nn.MaxPool2d(2, 2)
+        self.dropout2 = nn.Dropout(0.25)
+
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(7 * 7 * 64, 256)
+        self.bn3 = nn.BatchNorm1d(256)
+        self.dropout3 = nn.Dropout(0.4)
+        self.fc2 = nn.Linear(256, 10)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.relu(self.conv2(x))
+        x = self.dropout1(self.pool1(x))
+
+        x = self.relu(self.bn2(self.conv3(x)))
+        x = self.relu(self.conv4(x))
+        x = self.dropout2(self.pool2(x))
+
+        x = self.flatten(x)
+        x = self.dropout3(self.relu(self.bn3(self.fc1(x))))
+        return self.fc2(x)
+
 def build_cnn():
-    model = keras.Sequential([
-        layers.Conv2D(32, (3,3), activation='relu', padding='same', input_shape=(28,28,1)),
-        layers.BatchNormalization(),
-        layers.Conv2D(32, (3,3), activation='relu', padding='same'),
-        layers.MaxPooling2D(2,2),
-        layers.Dropout(0.25),
+    return CNN()
 
-        layers.Conv2D(64, (3,3), activation='relu', padding='same'),
-        layers.BatchNormalization(),
-        layers.Conv2D(64, (3,3), activation='relu', padding='same'),
-        layers.MaxPooling2D(2,2),
-        layers.Dropout(0.25),
+def count_params(model):
+    return sum(p.numel() for p in model.parameters())
 
-        layers.Flatten(),
-        layers.Dense(256, activation='relu'),
-        layers.BatchNormalization(),
-        layers.Dropout(0.4),
-        layers.Dense(10, activation='softmax')
-    ], name='cnn')
-    model.compile(optimizer=keras.optimizers.Adam(0.001),
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
-    return model
+# সব model train করার জন্য common training loop
+def train_and_evaluate(name, build_fn, X_tr, X_v, X_te, weight_decay=0.0, epochs=50, batch_size=64):
+    model = build_fn()
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=4, min_lr=1e-6)
+    stopper = EarlyStopper(name, patience=8)
 
-# Train all models
+    train_loader = DataLoader(TensorDataset(X_tr, y_train), batch_size=batch_size, shuffle=True)
+
+    start_time = time.time()
+    for epoch in range(epochs):
+        model.train()
+        for xb, yb in train_loader:
+            optimizer.zero_grad()
+            loss = criterion(model(xb), yb)
+            loss.backward()
+            optimizer.step()
+
+        model.eval()
+        with torch.no_grad():
+            val_loss = criterion(model(X_v), y_val).item()
+        scheduler.step(val_loss)
+        if stopper.step(val_loss, model):
+            break
+
+    model.load_state_dict(torch.load(f'{name}_best.pt'))   # restore_best_weights
+    train_time = time.time() - start_time
+
+    model.eval()
+    with torch.no_grad():
+        acc = (model(X_te).argmax(1) == y_test).float().mean().item()
+
+    return {'model': model, 'test_acc': acc, 'n_params': count_params(model), 'train_time': train_time}
+
 results = {}
-histories = {}
-
 models_config = [
-    ('simple_mlp', build_simple_mlp, X_train_flat, X_val_flat, X_test_flat),
-    ('deep_mlp',   build_deep_mlp,   X_train_flat, X_val_flat, X_test_flat),
-    ('cnn',        build_cnn,        X_train_cnn,  X_val_cnn,  X_test_cnn),
+    ('simple_mlp', build_simple_mlp, X_train_flat, X_val_flat, X_test_flat, 0.0),
+    ('deep_mlp',   build_deep_mlp,   X_train_flat, X_val_flat, X_test_flat, 0.001),
+    ('cnn',        build_cnn,        X_train_cnn,  X_val_cnn,  X_test_cnn,  0.0),
 ]
 
-for name, build_fn, X_tr, X_v, X_te in models_config:
+for name, build_fn, X_tr, X_v, X_te, wd in models_config:
     print(f"\nTraining {name}...")
-    model = build_fn()
-    start_time = time.time()
-
-    history = model.fit(
-        X_tr, y_train,
-        epochs=50, batch_size=64,
-        validation_data=(X_v, y_val),
-        callbacks=get_callbacks(name),
-        verbose=0
-    )
-
-    train_time = time.time() - start_time
-    loss, acc = model.evaluate(X_te, y_test, verbose=0)
-    n_params = model.count_params()
-
-    results[name] = {
-        'model': model, 'history': history,
-        'test_acc': acc, 'test_loss': loss,
-        'n_params': n_params, 'train_time': train_time
-    }
-    histories[name] = history
-    print(f"  Params: {n_params:,} | Test Acc: {acc:.4f} | Time: {train_time:.1f}s")
+    r = train_and_evaluate(name, build_fn, X_tr, X_v, X_te, weight_decay=wd)
+    results[name] = r
+    print(f"  Params: {r['n_params']:,} | Test Acc: {r['test_acc']:.4f} | Time: {r['train_time']:.1f}s")
 </code></pre>
 
     <h3>৫. Model Comparison ও Confusion Matrix</h3>
-    <pre><code"># Comparison table print
+    <pre><code># Comparison table print
 print("\n" + "="*70)
 print(f"{'Model':<15} {'Params':>10} {'Test Acc':>10} {'Time (s)':>10}")
 print("="*70)
 for name, r in results.items():
     print(f"{name:<15} {r['n_params']:>10,} {r['test_acc']:>10.4f} {r['train_time']:>10.1f}")
 
-# Training curves comparison
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-colors = {'simple_mlp': 'blue', 'deep_mlp': 'green', 'cnn': 'red'}
-
-for name, r in results.items():
-    h = r['history']
-    axes[0].plot(h.history['val_accuracy'], label=name, color=colors[name])
-    axes[1].plot(h.history['val_loss'],     label=name, color=colors[name])
-
-axes[0].set_title("Validation Accuracy")
-axes[0].set_xlabel("Epoch"); axes[0].set_ylabel("Accuracy")
-axes[0].legend(); axes[0].grid(True)
-
-axes[1].set_title("Validation Loss")
-axes[1].set_xlabel("Epoch"); axes[1].set_ylabel("Loss")
-axes[1].legend(); axes[1].grid(True)
-
-plt.tight_layout()
-plt.savefig("model_comparison_curves.png")
-plt.show()
-
 # Confusion Matrix for best model (CNN)
 best_model = results['cnn']['model']
-y_pred = np.argmax(best_model.predict(X_test_cnn), axis=1)
-cm = confusion_matrix(y_test, y_pred)
+best_model.eval()
+with torch.no_grad():
+    y_pred = best_model(X_test_cnn).argmax(1).numpy()
+y_test_np = y_test.numpy()
+cm = confusion_matrix(y_test_np, y_pred)
 
 plt.figure(figsize=(10, 8))
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
@@ -249,12 +276,12 @@ plt.show()
 </code></pre>
 
     <h3>৬. Per-Class Accuracy ও Error Analysis</h3>
-    <pre><code"># Per-class accuracy
+    <pre><code># Per-class accuracy
 print("\nPer-Class Accuracy (CNN):")
 print("-"*45)
 for i, class_name in enumerate(CLASS_NAMES):
-    class_mask = (y_test == i)
-    class_acc = np.mean(y_pred[class_mask] == y_test[class_mask])
+    class_mask = (y_test_np == i)
+    class_acc = np.mean(y_pred[class_mask] == y_test_np[class_mask])
     print(f"  {i}: {class_name:<15} — {class_acc:.3f} ({class_acc*100:.1f}%)")
 
 # Most confused pairs
@@ -271,7 +298,7 @@ for _ in range(5):
 
 # Classification report
 print("\nFull Classification Report:")
-print(classification_report(y_test, y_pred, target_names=CLASS_NAMES))
+print(classification_report(y_test_np, y_pred, target_names=CLASS_NAMES))
 </code></pre>
     <table>
       <thead><tr><th>Model</th><th>Architecture</th><th>Parameters</th><th>Test Accuracy</th><th>Training Time</th></tr></thead>
@@ -321,7 +348,7 @@ print("  - Analyze worst errors for insights")
       <thead><tr><th>Best Practice</th><th>কেন গুরুত্বপূর্ণ</th><th>Default পছন্দ</th></tr></thead>
       <tbody>
         <tr><td>Normalize input</td><td>Stable gradients, faster convergence</td><td>0-1 বা StandardScaler</td></tr>
-        <tr><td>He/Xavier init</td><td>Symmetry breaking, gradient flow</td><td>Keras default (glorot_uniform)</td></tr>
+        <tr><td>He/Xavier init</td><td>Symmetry breaking, gradient flow</td><td>PyTorch default (Kaiming uniform)</td></tr>
         <tr><td>Adam optimizer</td><td>Adaptive lr, momentum combined</td><td>lr=0.001</td></tr>
         <tr><td>Batch Normalization</td><td>Faster training, higher lr possible</td><td>Deep networks-এ সবসময়</td></tr>
         <tr><td>EarlyStopping</td><td>Overfitting রোধ, compute save</td><td>patience=10, restore_best=True</td></tr>

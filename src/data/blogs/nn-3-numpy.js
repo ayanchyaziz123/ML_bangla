@@ -284,6 +284,6 @@ print("He init accuracy:", model_he.accuracy(X_test, y_test))  # ~0.95+
         <tr><td>train()</td><td>Mini-batch loop</td><td>shuffle, batch, forward, backward, update</td></tr>
       </tbody>
     </table>
-    <p>পরবর্তী ব্লগে আমরা Keras/TensorFlow দিয়ে একই কাজ অনেক সহজে করব এবং MNIST dataset-এ handwritten digit classification করব।</p>
+    <p>পরবর্তী ব্লগে আমরা PyTorch দিয়ে একই কাজ অনেক সহজে করব এবং MNIST dataset-এ handwritten digit classification করব।</p>
   `,
 };

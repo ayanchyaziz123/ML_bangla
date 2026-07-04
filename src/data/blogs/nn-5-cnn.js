@@ -14,9 +14,8 @@ export const nn_5_cnn = {
       <li><strong>Translation invariant নয়:</strong> ছবির বাম-ডানে বিড়াল থাকলে আলাদা feature হিসেবে দেখে</li>
     </ul>
     <p>CNN এই সমস্যাগুলো সমাধান করে local pattern sharing এবং spatial hierarchy দিয়ে।</p>
-    <pre><code>import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+    <pre><code>import torch
+import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -101,74 +100,105 @@ print(np.array([[6,8],[3,4]]))
 </code></pre>
 
     <h3>৪. CNN Architecture: MNIST Classification</h3>
-    <pre><code># MNIST dataset (28x28 grayscale)
-(X_train, y_train), (X_test, y_test) = keras.datasets.mnist.load_data()
+    <pre><code># MNIST dataset (28x28 grayscale) — torchvision দিয়ে load
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
 
-# Preprocess for CNN: need channel dimension
-X_train = X_train.astype('float32') / 255.0
-X_test  = X_test.astype('float32') / 255.0
-X_train = X_train[..., np.newaxis]  # (60000, 28, 28, 1)
-X_test  = X_test[..., np.newaxis]   # (10000, 28, 28, 1)
+transform = transforms.Compose([transforms.ToTensor()])  # 0-255 -> 0-1, shape (1,28,28)
+train_dataset = datasets.MNIST(root='./data', train=True,  download=True, transform=transform)
+test_dataset  = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
 
-print("CNN input shape:", X_train.shape)  # (60000, 28, 28, 1)
+train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+test_loader  = DataLoader(test_dataset,  batch_size=128, shuffle=False)
 
-# CNN model
-cnn_model = keras.Sequential([
-    # Block 1
-    layers.Conv2D(32, (3, 3), activation='relu', padding='same',
-                  input_shape=(28, 28, 1)),
-    layers.MaxPooling2D((2, 2)),     # 28x28 -> 14x14
+images, _ = next(iter(train_loader))
+print("CNN input shape:", images.shape)  # (128, 1, 28, 28)
 
-    # Block 2
-    layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
-    layers.MaxPooling2D((2, 2)),     # 14x14 -> 7x7
+# CNN model — nn.Module class
+class CNNMnist(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding='same')
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding='same')
+        self.pool  = nn.MaxPool2d(2, 2)
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(7 * 7 * 64, 128)   # 7*7*64 = 3136
+        self.fc2 = nn.Linear(128, 10)
+        self.relu = nn.ReLU()
 
-    # Classifier head
-    layers.Flatten(),                # 7*7*64 = 3136
-    layers.Dense(128, activation='relu'),
-    layers.Dense(10, activation='softmax')
-], name="cnn_mnist")
+    def forward(self, x):
+        x = self.pool(self.relu(self.conv1(x)))   # 28x28 -> 14x14
+        x = self.pool(self.relu(self.conv2(x)))    # 14x14 -> 7x7
+        x = self.flatten(x)
+        x = self.relu(self.fc1(x))
+        return self.fc2(x)                         # raw logits
 
-cnn_model.summary()
-# Conv2D(32): 32 filters, 3x3 kernel, 320 params
-# Conv2D(64): 64 filters, 18496 params
-# Dense(128): 3136*128 + 128 = 401536 params
-# Total: ~422K params (vs MLP 109K but much better accuracy!)
+cnn_model = CNNMnist()
+print(cnn_model)
+# Conv2d(32): 32 filters, 3x3 kernel, 320 params
+# Conv2d(64): 64 filters, 18496 params
+# Linear(128): 3136*128 + 128 = 401536 params
+# Total: ~422K params (MLP-এর 109K-এর চেয়ে বেশি, কিন্তু accuracy অনেক ভালো!)
+
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(cnn_model.parameters(), lr=0.001)
 </code></pre>
 
     <h3>৫. Training ও MLP vs CNN তুলনা</h3>
-    <pre><code">cnn_model.compile(
-    optimizer='adam',
-    loss='sparse_categorical_crossentropy',
-    metrics=['accuracy']
-)
+    <pre><code>device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+cnn_model.to(device)
 
-cnn_history = cnn_model.fit(
-    X_train, y_train,
-    epochs=10,
-    batch_size=128,
-    validation_split=0.1,
-    verbose=1
-)
+for epoch in range(10):
+    cnn_model.train()
+    for xb, yb in train_loader:
+        xb, yb = xb.to(device), yb.to(device)
+        optimizer.zero_grad()
+        loss = criterion(cnn_model(xb), yb)
+        loss.backward()
+        optimizer.step()
 
-cnn_loss, cnn_acc = cnn_model.evaluate(X_test, y_test, verbose=0)
+def evaluate(model, loader):
+    model.eval()
+    correct, total = 0, 0
+    with torch.no_grad():
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            correct += (model(xb).argmax(1) == yb).sum().item()
+            total += yb.size(0)
+    return correct / total
+
+cnn_acc = evaluate(cnn_model, test_loader)
 print(f"CNN Test Accuracy: {cnn_acc:.4f}")  # ~0.993
 
-# MLP comparison (same data, flattened)
-X_train_flat = X_train.reshape(-1, 784)
-X_test_flat  = X_test.reshape(-1, 784)
+# MLP তুলনা (একই data, নিজেই flatten করে nn.Flatten)
+class MLPMnist(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(784, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 10)
+        self.relu = nn.ReLU()
 
-mlp_model = keras.Sequential([
-    layers.Dense(128, activation='relu', input_shape=(784,)),
-    layers.Dense(64, activation='relu'),
-    layers.Dense(10, activation='softmax')
-])
-mlp_model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
-mlp_model.fit(X_train_flat, y_train, epochs=10, batch_size=128,
-              validation_split=0.1, verbose=0)
-mlp_loss, mlp_acc = mlp_model.evaluate(X_test_flat, y_test, verbose=0)
+    def forward(self, x):
+        x = self.flatten(x)
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
+        return self.fc3(x)
+
+mlp_model = MLPMnist().to(device)
+mlp_optimizer = torch.optim.Adam(mlp_model.parameters(), lr=0.001)
+
+for epoch in range(10):
+    mlp_model.train()
+    for xb, yb in train_loader:
+        xb, yb = xb.to(device), yb.to(device)
+        mlp_optimizer.zero_grad()
+        loss = criterion(mlp_model(xb), yb)
+        loss.backward()
+        mlp_optimizer.step()
+
+mlp_acc = evaluate(mlp_model, test_loader)
 print(f"MLP Test Accuracy: {mlp_acc:.4f}")  # ~0.980
 
 print(f"\nCNN improvement: {(cnn_acc - mlp_acc)*100:.2f}%")
@@ -184,43 +214,67 @@ print(f"\nCNN improvement: {(cnn_acc - mlp_acc)*100:.2f}%")
     </table>
 
     <h3>৬. CIFAR-10 ও Transfer Learning পরিচয়</h3>
-    <pre><code"># CIFAR-10: 32x32 RGB, 10 classes
-(X_cifar_train, y_cifar_train), (X_cifar_test, y_cifar_test) = keras.datasets.cifar10.load_data()
-X_cifar_train = X_cifar_train.astype('float32') / 255.0
-X_cifar_test  = X_cifar_test.astype('float32') / 255.0
+    <pre><code># CIFAR-10: 32x32 RGB, 10 classes
+from torchvision import datasets as tv_datasets, transforms as tv_transforms
+import torchvision.models as models
+
+cifar_transform = tv_transforms.Compose([tv_transforms.ToTensor()])
+cifar_train = tv_datasets.CIFAR10(root='./data', train=True, download=True, transform=cifar_transform)
 classes = ['airplane','automobile','bird','cat','deer','dog','frog','horse','ship','truck']
 
-# CNN for CIFAR-10 (more complex)
-cifar_cnn = keras.Sequential([
-    layers.Conv2D(32, (3,3), activation='relu', padding='same', input_shape=(32,32,3)),
-    layers.Conv2D(32, (3,3), activation='relu', padding='same'),
-    layers.MaxPooling2D(2,2),
+# CIFAR-10-এর জন্য CNN (আরও complex)
+class CifarCNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 32, 3, padding='same')
+        self.conv2 = nn.Conv2d(32, 32, 3, padding='same')
+        self.pool1 = nn.MaxPool2d(2, 2)
+        self.conv3 = nn.Conv2d(32, 64, 3, padding='same')
+        self.conv4 = nn.Conv2d(64, 64, 3, padding='same')
+        self.pool2 = nn.MaxPool2d(2, 2)
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(64 * 8 * 8, 256)
+        self.fc2 = nn.Linear(256, 10)
+        self.relu = nn.ReLU()
 
-    layers.Conv2D(64, (3,3), activation='relu', padding='same'),
-    layers.Conv2D(64, (3,3), activation='relu', padding='same'),
-    layers.MaxPooling2D(2,2),
+    def forward(self, x):
+        x = self.relu(self.conv1(x))
+        x = self.relu(self.conv2(x))
+        x = self.pool1(x)
+        x = self.relu(self.conv3(x))
+        x = self.relu(self.conv4(x))
+        x = self.pool2(x)
+        x = self.flatten(x)
+        x = self.relu(self.fc1(x))
+        return self.fc2(x)
 
-    layers.Flatten(),
-    layers.Dense(256, activation='relu'),
-    layers.Dense(10, activation='softmax')
-])
-cifar_cnn.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
+cifar_cnn = CifarCNN()
+cifar_criterion = nn.CrossEntropyLoss()
+cifar_optimizer = torch.optim.Adam(cifar_cnn.parameters(), lr=0.001)
 
-# Transfer Learning (brief intro):
-# ImageNet pre-trained models শুরু থেকে train না করে fine-tune করা
-from tensorflow.keras.applications import VGG16
+# Transfer Learning (সংক্ষিপ্ত পরিচয়):
+# ImageNet pre-trained model শুরু থেকে train না করে fine-tune করা
+base_model = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
+base_model = base_model.features        # convolutional অংশ শুধু
+for p in base_model.parameters():
+    p.requires_grad = False             # Freeze pre-trained weights
 
-base_model = VGG16(weights='imagenet', include_top=False, input_shape=(32,32,3))
-base_model.trainable = False  # Freeze pre-trained weights
+class TransferModel(nn.Module):
+    def __init__(self, base):
+        super().__init__()
+        self.base = base
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(512, 256)   # VGG16 features, 32x32 input -> (512, 1, 1)
+        self.fc2 = nn.Linear(256, 10)
+        self.relu = nn.ReLU()
 
-transfer_model = keras.Sequential([
-    base_model,
-    layers.Flatten(),
-    layers.Dense(256, activation='relu'),
-    layers.Dense(10, activation='softmax')
-])
+    def forward(self, x):
+        x = self.base(x)
+        x = self.flatten(x)
+        x = self.relu(self.fc1(x))
+        return self.fc2(x)
+
+transfer_model = TransferModel(base_model)
 print("Transfer learning model: VGG16 base + custom head")
 print("Pre-trained on 1.2M ImageNet images!")
 </code></pre>
@@ -229,10 +283,10 @@ print("Pre-trained on 1.2M ImageNet images!")
     <p>এই ব্লগে আমরা শিখলাম:</p>
     <ul>
       <li>CNN-এর intuition: local patterns → hierarchical features</li>
-      <li>Conv2D: filters, feature maps, padding, stride</li>
-      <li>MaxPooling2D: spatial downsampling, translation invariance</li>
+      <li>nn.Conv2d: filters, feature maps, padding, stride</li>
+      <li>nn.MaxPool2d: spatial downsampling, translation invariance</li>
       <li>MNIST CNN: 99%+ accuracy (MLP ~98%)</li>
-      <li>Transfer Learning: ImageNet pre-trained VGG16, ResNet, EfficientNet</li>
+      <li>Transfer Learning: torchvision.models-এর ImageNet pre-trained VGG16, ResNet, EfficientNet</li>
     </ul>
     <p>পরবর্তী ব্লগে Regularization techniques — Dropout, Batch Normalization, L1/L2 — দিয়ে overfitting কমানো শিখব।</p>
   `,

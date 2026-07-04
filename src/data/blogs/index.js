@@ -155,6 +155,8 @@ import { stats_3_distributions } from './stats-3-distributions.js';
 import { stats_4_bayesian } from './stats-4-bayesian.js';
 import { stats_5_project } from './stats-5-project.js';
 import { interview_1_100 } from './interview-1-100.js';
+import { python_interview_1_50 } from './python-interview-1-50.js';
+import { sql_interview_1_50 } from './sql-interview-1-50.js';
 
 export const blogs = [
   lr_1_ki_keno_math,
@@ -314,4 +316,6 @@ export const blogs = [
   stats_4_bayesian,
   stats_5_project,
   interview_1_100,
+  python_interview_1_50,
+  sql_interview_1_50,
 ];

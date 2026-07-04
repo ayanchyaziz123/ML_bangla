@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -c '`' src/data/en/nn.js src/data/blogs/nn-1-perceptron.js src/data/blogs/nn-2-backprop.js src/data/blogs/nn-3-numpy.js src/data/blogs/nn-4-keras.js src/data/blogs/nn-5-cnn.js src/data/blogs/nn-6-regularization.js src/data/blogs/nn-7-project.js src/data/blogs/nn-8-rnn-lstm.js src/data/blogs/nn-9-transfer-learning.js)"
+    ]
+  }
+}

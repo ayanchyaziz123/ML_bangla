@@ -1,7 +1,7 @@
 export const autoencoder_4_vae = {
   slug: 'autoencoder-4-vae',
   title: 'VAE: ভ্যারিয়েশনাল অটোএনকোডার',
-  description: 'প্রোবাবিলিস্টিক এনকোডার, reparameterization trick, ELBO লস এবং Keras দিয়ে নতুন ছবি জেনারেট করার সম্পূর্ণ গাইড।',
+  description: 'প্রোবাবিলিস্টিক এনকোডার, reparameterization trick, ELBO লস এবং PyTorch দিয়ে নতুন ছবি জেনারেট করার সম্পূর্ণ গাইড।',
   date: 'মে ২০২৫',
   category: 'অটোএনকোডার',
   readTime: 15,
@@ -74,119 +74,137 @@ export const autoencoder_4_vae = {
       <strong>KL পেনাল্টির কাজ:</strong> এটি এনকোডার বিতরণকে প্রাইওর N(0,1)-এর কাছাকাছি রাখে। এতে লেটেন্ট স্পেস নিয়মিত এবং সংযুক্ত থাকে — যেকোনো জায়গা থেকে স্যাম্পল করলে অর্থপূর্ণ আউটপুট আসে।
     </p>
 
-    <h3>৫. Keras দিয়ে VAE ইমপ্লিমেন্টেশন</h3>
+    <h3>৫. PyTorch দিয়ে VAE ইমপ্লিমেন্টেশন</h3>
     <pre><code>import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras.datasets import mnist
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torchvision import datasets, transforms
 
 # ডেটা প্রস্তুত
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
-x_train = x_train.astype('float32').reshape(-1, 784) / 255.0
-x_test  = x_test.astype('float32').reshape(-1, 784)  / 255.0
+transform = transforms.ToTensor()
+train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+test_dataset  = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+x_train = train_dataset.data.reshape(-1, 784).float() / 255.0
+x_test  = test_dataset.data.reshape(-1, 784).float()  / 255.0
+y_test  = test_dataset.targets.numpy()
 
 latent_dim = 2  # ভিজুয়ালাইজেশনের জন্য ২D লেটেন্ট স্পেস
 
-# Sampling লেয়ার (Reparameterization Trick)
-class Sampling(layers.Layer):
-    """μ এবং log_var থেকে z স্যাম্পল করা"""
-
-    def call(self, inputs):
-        mu, log_var = inputs
-        batch  = tf.shape(mu)[0]
-        dim    = tf.shape(mu)[1]
-        # N(0,1) থেকে epsilon স্যাম্পল
-        epsilon = tf.random.normal(shape=(batch, dim))
-        # Reparameterization: z = mu + exp(0.5 * log_var) * epsilon
-        return mu + tf.exp(0.5 * log_var) * epsilon</code></pre>
+def reparameterize(mu, log_var):
+    """μ এবং log_var থেকে z স্যাম্পল করা (Reparameterization Trick)"""
+    # N(0,1) থেকে epsilon স্যাম্পল
+    epsilon = torch.randn_like(mu)
+    # Reparameterization: z = mu + exp(0.5 * log_var) * epsilon
+    return mu + torch.exp(0.5 * log_var) * epsilon</code></pre>
 
     <pre><code># এনকোডার তৈরি
-encoder_inputs = keras.Input(shape=(784,), name='encoder_input')
-x = layers.Dense(512, activation='relu')(encoder_inputs)
-x = layers.Dense(256, activation='relu')(x)
+class Encoder(nn.Module):
+    def __init__(self, latent_dim=2):
+        super().__init__()
+        self.fc1 = nn.Linear(784, 512)
+        self.fc2 = nn.Linear(512, 256)
+        # দুটি আউটপুট: mu এবং log_var
+        self.z_mean    = nn.Linear(256, latent_dim)
+        self.z_log_var = nn.Linear(256, latent_dim)
 
-# দুটি আউটপুট: mu এবং log_var
-z_mean    = layers.Dense(latent_dim, name='z_mean')(x)
-z_log_var = layers.Dense(latent_dim, name='z_log_var')(x)
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        z_mean = self.z_mean(x)
+        z_log_var = self.z_log_var(x)
+        # Reparameterization trick দিয়ে z স্যাম্পল
+        z = reparameterize(z_mean, z_log_var)
+        return z_mean, z_log_var, z
 
-# Reparameterization trick দিয়ে z স্যাম্পল
-z = Sampling(name='z')([z_mean, z_log_var])
-
-encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name='encoder')
-encoder.summary()</code></pre>
+encoder = Encoder(latent_dim)
+print(encoder)</code></pre>
 
     <pre><code># ডিকোডার তৈরি
-latent_inputs = keras.Input(shape=(latent_dim,), name='decoder_input')
-x = layers.Dense(256, activation='relu')(latent_inputs)
-x = layers.Dense(512, activation='relu')(x)
-decoder_outputs = layers.Dense(784, activation='sigmoid')(x)
+class Decoder(nn.Module):
+    def __init__(self, latent_dim=2):
+        super().__init__()
+        self.fc1 = nn.Linear(latent_dim, 256)
+        self.fc2 = nn.Linear(256, 512)
+        self.out = nn.Linear(512, 784)
 
-decoder = keras.Model(latent_inputs, decoder_outputs, name='decoder')
-decoder.summary()</code></pre>
+    def forward(self, z):
+        z = F.relu(self.fc1(z))
+        z = F.relu(self.fc2(z))
+        return torch.sigmoid(self.out(z))
+
+decoder = Decoder(latent_dim)
+print(decoder)</code></pre>
 
     <pre><code># সম্পূর্ণ VAE মডেল
-class VAE(keras.Model):
-    def __init__(self, encoder, decoder, **kwargs):
-        super().__init__(**kwargs)
+class VAE(nn.Module):
+    def __init__(self, encoder, decoder):
+        super().__init__()
         self.encoder = encoder
         self.decoder = decoder
-        # মেট্রিক্স ট্র্যাক করার জন্য
-        self.total_loss_tracker    = keras.metrics.Mean(name='total_loss')
-        self.recon_loss_tracker    = keras.metrics.Mean(name='reconstruction_loss')
-        self.kl_loss_tracker       = keras.metrics.Mean(name='kl_loss')
 
-    @property
-    def metrics(self):
-        return [self.total_loss_tracker,
-                self.recon_loss_tracker,
-                self.kl_loss_tracker]
+    def forward(self, x):
+        z_mean, z_log_var, z = self.encoder(x)
+        reconstruction = self.decoder(z)
+        return reconstruction, z_mean, z_log_var
 
-    def train_step(self, data):
-        with tf.GradientTape() as tape:
-            z_mean, z_log_var, z = self.encoder(data)
-            reconstruction = self.decoder(z)
+def train_step(vae, data, optimizer):
+    optimizer.zero_grad()
+    reconstruction, z_mean, z_log_var = vae(data)
 
-            # রিকনস্ট্রাকশন লস (BCE)
-            recon_loss = tf.reduce_mean(
-                tf.reduce_sum(
-                    keras.losses.binary_crossentropy(data, reconstruction),
-                    axis=-1
-                )
-            )
+    # রিকনস্ট্রাকশন লস (BCE)
+    recon_loss = torch.mean(
+        torch.sum(
+            F.binary_cross_entropy(reconstruction, data, reduction='none'),
+            dim=-1
+        )
+    )
 
-            # KL Divergence লস
-            kl_loss = -0.5 * tf.reduce_mean(
-                tf.reduce_sum(
-                    1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var),
-                    axis=1
-                )
-            )
+    # KL Divergence লস
+    kl_loss = -0.5 * torch.mean(
+        torch.sum(
+            1 + z_log_var - z_mean.pow(2) - z_log_var.exp(),
+            dim=1
+        )
+    )
 
-            total_loss = recon_loss + kl_loss
+    total_loss = recon_loss + kl_loss
 
-        grads = tape.gradient(total_loss, self.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+    total_loss.backward()
+    optimizer.step()
 
-        self.total_loss_tracker.update_state(total_loss)
-        self.recon_loss_tracker.update_state(recon_loss)
-        self.kl_loss_tracker.update_state(kl_loss)
+    return {
+        'loss': total_loss.item(),
+        'reconstruction_loss': recon_loss.item(),
+        'kl_loss': kl_loss.item(),
+    }
 
-        return {
-            'loss': self.total_loss_tracker.result(),
-            'reconstruction_loss': self.recon_loss_tracker.result(),
-            'kl_loss': self.kl_loss_tracker.result(),
-        }
+vae = VAE(encoder, decoder)
+optimizer = torch.optim.Adam(vae.parameters(), lr=1e-3)
 
-vae = VAE(encoder, decoder, name='vae')
-vae.compile(optimizer=keras.optimizers.Adam(learning_rate=1e-3))
-history = vae.fit(x_train, x_train, epochs=50, batch_size=128, verbose=1)</code></pre>
+from torch.utils.data import DataLoader, TensorDataset
+train_loader = DataLoader(TensorDataset(x_train, x_train), batch_size=128, shuffle=True)
+
+for epoch in range(50):
+    vae.train()
+    epoch_loss = epoch_recon = epoch_kl = 0.0
+    for xb, _ in train_loader:
+        metrics = train_step(vae, xb, optimizer)
+        epoch_loss  += metrics['loss'] * xb.size(0)
+        epoch_recon += metrics['reconstruction_loss'] * xb.size(0)
+        epoch_kl    += metrics['kl_loss'] * xb.size(0)
+    n = len(train_loader.dataset)
+    print(f"Epoch {epoch+1}: loss={epoch_loss/n:.4f}, "
+          f"reconstruction_loss={epoch_recon/n:.4f}, kl_loss={epoch_kl/n:.4f}")</code></pre>
 
     <h3>৬. লেটেন্ট স্পেস ভিজুয়ালাইজেশন</h3>
     <pre><code># ২D লেটেন্ট স্পেস ভিজুয়ালাইজ করা
 def plot_latent_space(encoder, data, labels, n=10000):
-    z_means, _, _ = encoder.predict(data[:n], verbose=0)
+    encoder.eval()
+    with torch.no_grad():
+        z_means, _, _ = encoder(data[:n])
+    z_means = z_means.numpy()
 
     plt.figure(figsize=(10, 8))
     scatter = plt.scatter(
@@ -213,10 +231,12 @@ def plot_latent_grid(decoder, n=15, figsize=15):
     grid_x = np.linspace(-scale, scale, n)
     grid_y = np.linspace(-scale, scale, n)[::-1]
 
+    decoder.eval()
     for i, yi in enumerate(grid_y):
         for j, xi in enumerate(grid_x):
-            z_sample = np.array([[xi, yi]])
-            x_decoded = decoder.predict(z_sample, verbose=0)
+            z_sample = torch.tensor([[xi, yi]], dtype=torch.float32)
+            with torch.no_grad():
+                x_decoded = decoder(z_sample).numpy()
             digit = x_decoded[0].reshape(28, 28)
             figure[i * 28:(i + 1) * 28,
                    j * 28:(j + 1) * 28] = digit
@@ -238,15 +258,18 @@ def interpolate_digits(encoder, decoder, x_test, y_test,
     idx_a = np.where(y_test == digit_a)[0][0]
     idx_b = np.where(y_test == digit_b)[0][0]
 
-    # লেটেন্ট ভেক্টর এনকোড করা
-    z_a, _, _ = encoder.predict(x_test[idx_a:idx_a+1], verbose=0)
-    z_b, _, _ = encoder.predict(x_test[idx_b:idx_b+1], verbose=0)
+    encoder.eval()
+    decoder.eval()
+    with torch.no_grad():
+        # লেটেন্ট ভেক্টর এনকোড করা
+        z_a, _, _ = encoder(x_test[idx_a:idx_a+1])
+        z_b, _, _ = encoder(x_test[idx_b:idx_b+1])
 
-    # ইন্টারপোলেশন
-    alphas = np.linspace(0, 1, steps)
-    z_interp = np.array([alpha * z_b + (1 - alpha) * z_a for alpha in alphas])
+        # ইন্টারপোলেশন
+        alphas = np.linspace(0, 1, steps)
+        z_interp = torch.cat([alpha * z_b + (1 - alpha) * z_a for alpha in alphas], dim=0)
 
-    images = decoder.predict(z_interp, verbose=0)
+        images = decoder(z_interp).numpy()
 
     plt.figure(figsize=(20, 3))
     for i in range(steps):
@@ -269,8 +292,10 @@ interpolate_digits(encoder, decoder, x_test, y_test, digit_a=3, digit_b=8)</code
     <pre><code># র্যান্ডম স্যাম্পলিং দিয়ে নতুন ছবি তৈরি
 def generate_new_images(decoder, n_samples=20, latent_dim=2):
     # প্রাইওর N(0,1) থেকে স্যাম্পল
-    z_random = np.random.randn(n_samples, latent_dim)
-    generated = decoder.predict(z_random, verbose=0)
+    z_random = torch.randn(n_samples, latent_dim)
+    decoder.eval()
+    with torch.no_grad():
+        generated = decoder(z_random).numpy()
 
     plt.figure(figsize=(20, 4))
     for i in range(n_samples):
@@ -291,32 +316,25 @@ generate_new_images(decoder, n_samples=20, latent_dim=2)</code></pre>
 
 latent_dim_high = 16
 
-enc_inp = keras.Input(shape=(784,))
-x = layers.Dense(512, activation='relu')(enc_inp)
-x = layers.Dense(256, activation='relu')(x)
-z_mean_h    = layers.Dense(latent_dim_high, name='z_mean')(x)
-z_log_var_h = layers.Dense(latent_dim_high, name='z_log_var')(x)
-z_h         = Sampling(name='z')([z_mean_h, z_log_var_h])
-encoder_h   = keras.Model(enc_inp, [z_mean_h, z_log_var_h, z_h])
+encoder_h = Encoder(latent_dim_high)
+decoder_h = Decoder(latent_dim_high)
+vae_h = VAE(encoder_h, decoder_h)
+optimizer_h = torch.optim.Adam(vae_h.parameters(), lr=1e-3)
 
-dec_inp = keras.Input(shape=(latent_dim_high,))
-x = layers.Dense(256, activation='relu')(dec_inp)
-x = layers.Dense(512, activation='relu')(x)
-dec_out = layers.Dense(784, activation='sigmoid')(x)
-decoder_h = keras.Model(dec_inp, dec_out)
-
-vae_h = VAE(encoder_h, decoder_h, name='vae_16d')
-vae_h.compile(optimizer=keras.optimizers.Adam(1e-3))
-vae_h.fit(x_train, x_train, epochs=50, batch_size=128, verbose=0)
+for epoch in range(50):
+    vae_h.train()
+    for xb, _ in train_loader:
+        train_step(vae_h, xb, optimizer_h)
 
 # তুলনা
-recon_2d  = vae.encoder(x_test)[2]
-recon_2d  = vae.decoder(recon_2d).numpy()
-mse_2d    = np.mean((x_test - recon_2d) ** 2)
+vae.eval()
+vae_h.eval()
+with torch.no_grad():
+    recon_2d, _, _  = vae(x_test)
+    mse_2d = torch.mean((x_test - recon_2d) ** 2).item()
 
-recon_16d = vae_h.encoder(x_test)[2]
-recon_16d = vae_h.decoder(recon_16d).numpy()
-mse_16d   = np.mean((x_test - recon_16d) ** 2)
+    recon_16d, _, _ = vae_h(x_test)
+    mse_16d = torch.mean((x_test - recon_16d) ** 2).item()
 
 print(f"VAE (latent_dim=2):  MSE = {mse_2d:.4f}")
 print(f"VAE (latent_dim=16): MSE = {mse_16d:.4f}")</code></pre>

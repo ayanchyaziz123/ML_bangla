@@ -90,18 +90,18 @@ print(f"IoU: {iou:.4f}")  # ~0.68
         <tr><td>YOLOv3</td><td>0.022 sec/img</td><td>57.9% (COCO)</td><td>Accuracy tradeoff</td></tr>
       </tbody>
     </table>
-    <pre><code>import tensorflow as tf
-import numpy as np
+    <pre><code>import torch
+import torch.nn.functional as F
 
 # RoI Pooling concept (simplified)
 def roi_pooling(feature_map, rois, output_size=(7, 7)):
     """
-    feature_map: (H, W, C) feature tensor
+    feature_map: (C, H, W) feature tensor
     rois: list of [y1, x1, y2, x2] normalized coordinates
     output_size: fixed output size for each RoI
     """
     pooled_rois = []
-    fH, fW, C = feature_map.shape
+    C, fH, fW = feature_map.shape
 
     for roi in rois:
         y1, x1, y2, x2 = roi
@@ -111,27 +111,27 @@ def roi_pooling(feature_map, rois, output_size=(7, 7)):
         fy2 = int(y2 * fH)
         fx2 = int(x2 * fW)
 
-        roi_feature = feature_map[fy1:fy2, fx1:fx2, :]
+        roi_feature = feature_map[:, fy1:fy2, fx1:fx2]
 
-        if roi_feature.shape[0] == 0 or roi_feature.shape[1] == 0:
-            pooled_rois.append(np.zeros((*output_size, C)))
+        if roi_feature.shape[1] == 0 or roi_feature.shape[2] == 0:
+            pooled_rois.append(torch.zeros(C, *output_size))
             continue
 
         # Adaptive max pooling to fixed output_size
-        pooled = tf.image.resize(roi_feature, output_size, method='max')
-        pooled_rois.append(pooled.numpy())
+        pooled = F.adaptive_max_pool2d(roi_feature.unsqueeze(0), output_size)
+        pooled_rois.append(pooled.squeeze(0))
 
-    return np.array(pooled_rois)
+    return torch.stack(pooled_rois)
 
 # উদাহরণ
-feature_map = np.random.randn(14, 14, 512).astype(np.float32)
+feature_map = torch.randn(512, 14, 14)
 rois = [
     [0.1, 0.1, 0.5, 0.5],  # RoI 1
     [0.4, 0.4, 0.9, 0.9],  # RoI 2
 ]
 
 pooled = roi_pooling(feature_map, rois)
-print(f"RoI Pooling output: {pooled.shape}")  # (2, 7, 7, 512)
+print(f"RoI Pooling output: {tuple(pooled.shape)}")  # (2, 512, 7, 7)
 </code></pre>
 
     <h3>৪. YOLO: You Only Look Once</h3>
@@ -238,7 +238,7 @@ def nms(boxes, scores, iou_threshold=0.5):
         ])
 
         # IoU threshold-এর নিচের boxes রাখো
-        below_threshold = remaining[ious < iou_threshold]
+        below_threshold = remaining[ious &lt; iou_threshold]
         sorted_indices = below_threshold
 
     return keep

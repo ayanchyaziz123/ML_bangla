@@ -48,39 +48,52 @@ print(f"Input: {img.shape}, Kernel: {kernel.shape}, Output: {out.shape}")</code>
 #   (F * F * C_in + 1) * C_out
 #   └─ kernel size ─┘   bias     └─ num filters ─┘
 #
-# Example: Conv2D(32 filters, 3x3) on RGB input (3 channels)
+# Example: Conv2d(32 filters, 3x3) on RGB input (3 channels)
 #   = (3 * 3 * 3 + 1) * 32 = 896 parameters
 #
 # Each filter produces one feature map → output has C_out channels
 
-import tensorflow as tf
-from tensorflow import keras
+import torch
+import torch.nn as nn
 
-model = keras.Sequential([
-    keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(28,28,1)),
-    keras.layers.Conv2D(64, (3,3), activation='relu'),
-])
-model.summary()
+class SimpleConvNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3)   # in_channels=1, 28x28 input
+        self.relu1 = nn.ReLU()
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3)
+        self.relu2 = nn.ReLU()
+
+    def forward(self, x):
+        x = self.relu1(self.conv1(x))
+        x = self.relu2(self.conv2(x))
+        return x
+
+model = SimpleConvNet()
+print(model)
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Total params: {total_params:,}")
 # Layer 1: (3*3*1+1)*32  =  320 params
 # Layer 2: (3*3*32+1)*64 = 18,496 params</code></pre>
 
       <h3>3. Stride & Padding</h3>
-      <pre><code>from tensorflow import keras
+      <pre><code>import torch
+import torch.nn as nn
 
 # Stride=2: skip every other position → output half the size
-# Padding='same': add zeros around input → output same spatial size as input
-# Padding='valid' (default): no padding → output shrinks
+# padding=1: add zeros around input → output same spatial size ('same', for 3x3 stride 1)
+# padding=0 (default): no padding → output shrinks ('valid')
 
 examples = [
-    keras.layers.Conv2D(32, 3, strides=1, padding='valid'),   # shrinks by 2 each dim
-    keras.layers.Conv2D(32, 3, strides=1, padding='same'),    # same spatial size
-    keras.layers.Conv2D(32, 3, strides=2, padding='same'),    # halves spatial size
+    nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=0),   # 'valid' — shrinks by 2 each dim
+    nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),   # 'same' — same spatial size
+    nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),   # halves spatial size
 ]
 
-inp = keras.Input(shape=(28, 28, 1))
+inp = torch.randn(1, 1, 28, 28)
 for layer in examples:
     out = layer(inp)
-    print(f"strides={layer.strides}, padding={layer.padding} → {out.shape}")</code></pre>
+    print(f"stride={layer.stride}, padding={layer.padding} → {tuple(out.shape)}")</code></pre>
       <table>
         <thead><tr><th>Parameter</th><th>Effect</th><th>Common Values</th></tr></thead>
         <tbody>
@@ -106,8 +119,9 @@ for layer in examples:
 
 # 1x1 convolution: cross-channel mixing, dimension reduction
 # (used in Inception, ResNet bottleneck)
-x = keras.layers.Conv2D(64, 1, activation='relu')(inp)  # 1x1 conv
-print(f"1x1 conv output: {x.shape}")</code></pre>
+conv1x1 = nn.Conv2d(1, 64, kernel_size=1)
+x = torch.relu(conv1x1(inp))   # 1x1 conv
+print(f"1x1 conv output: {tuple(x.shape)}")</code></pre>
 
       <h3>5. Why CNNs Work for Images</h3>
       <table>
@@ -137,23 +151,22 @@ print(f"1x1 conv output: {x.shape}")</code></pre>
 # MaxPool(2x2, stride=2): halves H and W  →  most common
 # AvgPool(2x2, stride=2): mean instead of max
 
-import tensorflow as tf
-from tensorflow import keras
-import numpy as np
+import torch
+import torch.nn as nn
 
 # Demonstrate max vs avg pooling on a tiny feature map
-feat_map = np.array([[1, 3, 2, 4],
-                     [5, 6, 1, 2],
-                     [3, 1, 4, 7],
-                     [2, 8, 3, 1]], dtype='float32').reshape(1,4,4,1)
+feat_map = torch.tensor([[1, 3, 2, 4],
+                         [5, 6, 1, 2],
+                         [3, 1, 4, 7],
+                         [2, 8, 3, 1]], dtype=torch.float32).reshape(1,1,4,4)
 
-max_pool = keras.layers.MaxPooling2D(2, strides=2)(feat_map)
-avg_pool = keras.layers.AveragePooling2D(2, strides=2)(feat_map)
-gap      = keras.layers.GlobalAveragePooling2D()(feat_map)
+max_pool = nn.MaxPool2d(2, stride=2)(feat_map)
+avg_pool = nn.AvgPool2d(2, stride=2)(feat_map)
+gap      = nn.AdaptiveAvgPool2d(1)(feat_map)
 
-print("MaxPool:", max_pool.numpy().squeeze())   # [[6,4],[8,7]]
-print("AvgPool:", avg_pool.numpy().squeeze())   # [[3.75,2.25],[3.5,3.75]]
-print("GAP:    ", gap.numpy())                  # single value per channel</code></pre>
+print("MaxPool:", max_pool.squeeze().numpy())   # [[6,4],[8,7]]
+print("AvgPool:", avg_pool.squeeze().numpy())   # [[3.75,2.25],[3.5,3.75]]
+print("GAP:    ", gap.squeeze().numpy())        # single value per channel</code></pre>
       <table>
         <thead><tr><th>Pooling Type</th><th>Operation</th><th>Use When</th></tr></thead>
         <tbody>
@@ -178,62 +191,139 @@ print("GAP:    ", gap.numpy())                  # single value per channel</code
 #   3. Slight regularization (reduces need for dropout)
 #   4. Less sensitive to weight initialization
 
-model_with_bn = keras.Sequential([
-    keras.layers.Conv2D(32, 3, padding='same', input_shape=(32,32,3)),
-    keras.layers.BatchNormalization(),
-    keras.layers.Activation('relu'),
-    keras.layers.MaxPooling2D(2),
+class CNNWithBN(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 32, 3, padding=1)
+        self.bn1   = nn.BatchNorm2d(32)
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(2)
 
-    keras.layers.Conv2D(64, 3, padding='same'),
-    keras.layers.BatchNormalization(),
-    keras.layers.Activation('relu'),
-    keras.layers.MaxPooling2D(2),
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
+        self.bn2   = nn.BatchNorm2d(64)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool2d(2)
 
-    keras.layers.GlobalAveragePooling2D(),
-    keras.layers.Dense(10, activation='softmax'),
-])
-model_with_bn.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])</code></pre>
+        self.gap     = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()
+        self.fc      = nn.Linear(64, num_classes)
+
+    def forward(self, x):
+        x = self.pool1(self.relu1(self.bn1(self.conv1(x))))
+        x = self.pool2(self.relu2(self.bn2(self.conv2(x))))
+        x = self.gap(x)
+        x = self.flatten(x)
+        return self.fc(x)
+
+model_with_bn = CNNWithBN()
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model_with_bn.parameters(), lr=0.001)</code></pre>
 
       <h3>3. Dropout in CNNs</h3>
-      <pre><code">from tensorflow import keras
+      <pre><code">import torch
+import torch.nn as nn
 
 # Regular Dropout: randomly zeroes individual activations
-# SpatialDropout2D: randomly zeroes entire feature maps
+# Dropout2d: randomly zeroes entire feature maps (channels)
 # → Better for CNNs because adjacent pixels are correlated
 
-model = keras.Sequential([
-    keras.layers.Conv2D(64, 3, activation='relu', padding='same', input_shape=(32,32,3)),
-    keras.layers.SpatialDropout2D(0.25),   # drop entire feature maps
-    keras.layers.MaxPooling2D(2),
+class CNNWithDropout(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.conv1   = nn.Conv2d(3, 64, 3, padding=1)
+        self.relu1   = nn.ReLU()
+        self.spdrop1 = nn.Dropout2d(0.25)   # drop entire feature maps
+        self.pool1   = nn.MaxPool2d(2)
 
-    keras.layers.Conv2D(128, 3, activation='relu', padding='same'),
-    keras.layers.SpatialDropout2D(0.25),
-    keras.layers.GlobalAveragePooling2D(),
+        self.conv2   = nn.Conv2d(64, 128, 3, padding=1)
+        self.relu2   = nn.ReLU()
+        self.spdrop2 = nn.Dropout2d(0.25)
+        self.gap     = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()
 
-    keras.layers.Dropout(0.5),             # regular dropout before Dense
-    keras.layers.Dense(10, activation='softmax'),
-])</code></pre>
+        self.dropout = nn.Dropout(0.5)             # regular dropout before Linear
+        self.fc      = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        x = self.pool1(self.spdrop1(self.relu1(self.conv1(x))))
+        x = self.gap(self.spdrop2(self.relu2(self.conv2(x))))
+        x = self.flatten(x)
+        x = self.dropout(x)
+        return self.fc(x)
+
+model = CNNWithDropout()</code></pre>
 
       <h3>4. BN Impact on CIFAR-10</h3>
-      <pre><code">(X_train, y_train), (X_test, y_test) = keras.datasets.cifar10.load_data()
-X_train = X_train.astype('float32') / 255.0
-X_test  = X_test.astype('float32')  / 255.0
+      <pre><code">import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+import torchvision
+import torchvision.transforms as transforms
 
-def build_cnn(use_bn=True):
-    layers = [keras.layers.Input(shape=(32,32,3))]
-    for filters in [32, 64]:
-        layers += [keras.layers.Conv2D(filters, 3, padding='same')]
-        if use_bn: layers.append(keras.layers.BatchNormalization())
-        layers += [keras.layers.Activation('relu'), keras.layers.MaxPooling2D(2)]
-    layers += [keras.layers.GlobalAveragePooling2D(), keras.layers.Dense(10, activation='softmax')]
-    m = keras.Sequential(layers)
-    m.compile(optimizer=keras.optimizers.Adam(0.01), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-    return m
+transform = transforms.ToTensor()
+train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+test_set  = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+train_loader = DataLoader(train_set, batch_size=128, shuffle=True)
+test_loader  = DataLoader(test_set, batch_size=128, shuffle=False)
 
-h1 = build_cnn(use_bn=False).fit(X_train, y_train, epochs=15, batch_size=128, validation_data=(X_test, y_test), verbose=0)
-h2 = build_cnn(use_bn=True).fit(X_train, y_train, epochs=15, batch_size=128, validation_data=(X_test, y_test), verbose=0)
-print(f"Without BN: {max(h1.history['val_accuracy']):.4f}")
-print(f"With BN:    {max(h2.history['val_accuracy']):.4f}")</code></pre>
+class ComparisonCNN(nn.Module):
+    def __init__(self, use_bn=True, num_classes=10):
+        super().__init__()
+        self.use_bn = use_bn
+        self.conv1 = nn.Conv2d(3, 32, 3, padding=1)
+        self.bn1   = nn.BatchNorm2d(32) if use_bn else None
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(2)
+
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
+        self.bn2   = nn.BatchNorm2d(64) if use_bn else None
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool2d(2)
+
+        self.gap     = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()
+        self.fc      = nn.Linear(64, num_classes)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        if self.use_bn: x = self.bn1(x)
+        x = self.pool1(self.relu1(x))
+
+        x = self.conv2(x)
+        if self.use_bn: x = self.bn2(x)
+        x = self.pool2(self.relu2(x))
+
+        x = self.gap(x)
+        x = self.flatten(x)
+        return self.fc(x)
+
+def train_and_eval(use_bn, epochs=15, lr=0.01):
+    model = ComparisonCNN(use_bn=use_bn)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    best_val_acc = 0.0
+    for epoch in range(epochs):
+        model.train()
+        for xb, yb in train_loader:
+            optimizer.zero_grad()
+            loss = criterion(model(xb), yb)
+            loss.backward()
+            optimizer.step()
+
+        model.eval()
+        correct, total = 0, 0
+        with torch.no_grad():
+            for xb, yb in test_loader:
+                preds = model(xb).argmax(dim=1)
+                correct += (preds == yb).sum().item()
+                total   += yb.size(0)
+        best_val_acc = max(best_val_acc, correct / total)
+    return best_val_acc
+
+acc_no_bn = train_and_eval(use_bn=False)
+acc_bn    = train_and_eval(use_bn=True)
+print(f"Without BN: {acc_no_bn:.4f}")
+print(f"With BN:    {acc_bn:.4f}")</code></pre>
     `,
   },
   {
@@ -259,95 +349,136 @@ print(f"With BN:    {max(h2.history['val_accuracy']):.4f}")</code></pre>
       </table>
 
       <h3>2. ResNet — Solving Vanishing Gradient with Skip Connections</h3>
-      <pre><code>import tensorflow as tf
-from tensorflow import keras
+      <pre><code>import torch
+import torch.nn as nn
 
 # ResNet insight: learning residual F(x) = H(x) - x is easier than H(x) directly
 # Skip connection: output = F(x) + x   (identity shortcut)
 # If gradient vanishes through F(x), it still flows through the identity path
 
-def residual_block(x, filters, downsample=False):
-    stride = 2 if downsample else 1
-    shortcut = x
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, filters, downsample=False):
+        super().__init__()
+        stride = 2 if downsample else 1
+        self.conv1 = nn.Conv2d(in_channels, filters, 3, stride=stride, padding=1)
+        self.bn1   = nn.BatchNorm2d(filters)
+        self.conv2 = nn.Conv2d(filters, filters, 3, padding=1)
+        self.bn2   = nn.BatchNorm2d(filters)
+        self.relu  = nn.ReLU()
 
-    # Main path
-    y = keras.layers.Conv2D(filters, 3, strides=stride, padding='same')(x)
-    y = keras.layers.BatchNormalization()(y)
-    y = keras.layers.ReLU()(y)
-    y = keras.layers.Conv2D(filters, 3, padding='same')(y)
-    y = keras.layers.BatchNormalization()(y)
+        # Adjust shortcut if shape changed
+        self.has_shortcut = downsample or in_channels != filters
+        if self.has_shortcut:
+            self.shortcut_conv = nn.Conv2d(in_channels, filters, 1, stride=stride)
+            self.shortcut_bn   = nn.BatchNorm2d(filters)
 
-    # Adjust shortcut if shape changed
-    if downsample or x.shape[-1] != filters:
-        shortcut = keras.layers.Conv2D(filters, 1, strides=stride)(x)
-        shortcut = keras.layers.BatchNormalization()(shortcut)
-
-    y = keras.layers.Add()([y, shortcut])  # F(x) + x
-    y = keras.layers.ReLU()(y)
-    return y
+    def forward(self, x):
+        shortcut = self.shortcut_bn(self.shortcut_conv(x)) if self.has_shortcut else x
+        y = self.relu(self.bn1(self.conv1(x)))
+        y = self.bn2(self.conv2(y))
+        y = self.relu(y + shortcut)   # F(x) + x
+        return y
 
 # Build a small ResNet
-inp = keras.Input(shape=(32, 32, 3))
-x   = keras.layers.Conv2D(32, 3, padding='same')(inp)
-x   = keras.layers.BatchNormalization()(x)
-x   = keras.layers.ReLU()(x)
-x   = residual_block(x, 32)
-x   = residual_block(x, 64, downsample=True)
-x   = residual_block(x, 64)
-x   = keras.layers.GlobalAveragePooling2D()(x)
-out = keras.layers.Dense(10, activation='softmax')(x)
-model = keras.Model(inp, out)
-print(f"Custom ResNet params: {model.count_params():,}")</code></pre>
+class SmallResNet(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.stem_conv = nn.Conv2d(3, 32, 3, padding=1)
+        self.stem_bn   = nn.BatchNorm2d(32)
+        self.stem_relu = nn.ReLU()
+        self.block1 = ResidualBlock(32, 32)
+        self.block2 = ResidualBlock(32, 64, downsample=True)
+        self.block3 = ResidualBlock(64, 64)
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(64, num_classes)
+
+    def forward(self, x):
+        x = self.stem_relu(self.stem_bn(self.stem_conv(x)))
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.pool(x).flatten(1)
+        return self.fc(x)
+
+model = SmallResNet()
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Custom ResNet params: {total_params:,}")</code></pre>
 
       <h3>3. Inception Module — Parallel Multi-Scale Filters</h3>
-      <pre><code">def inception_module(x, f1, f3, f5, fpool):
+      <pre><code">import torch
+import torch.nn.functional as F
+
+def inception_module(x, in_channels, f1, f3, f5, fpool):
     # Branch 1: 1x1 conv
-    b1 = keras.layers.Conv2D(f1, 1, activation='relu', padding='same')(x)
+    b1 = F.relu(nn.Conv2d(in_channels, f1, 1)(x))
     # Branch 2: 1x1 → 3x3
-    b2 = keras.layers.Conv2D(f3, 1, activation='relu', padding='same')(x)
-    b2 = keras.layers.Conv2D(f3, 3, activation='relu', padding='same')(b2)
+    b2 = F.relu(nn.Conv2d(in_channels, f3, 1)(x))
+    b2 = F.relu(nn.Conv2d(f3, f3, 3, padding=1)(b2))
     # Branch 3: 1x1 → 5x5
-    b3 = keras.layers.Conv2D(f5, 1, activation='relu', padding='same')(x)
-    b3 = keras.layers.Conv2D(f5, 5, activation='relu', padding='same')(b3)
+    b3 = F.relu(nn.Conv2d(in_channels, f5, 1)(x))
+    b3 = F.relu(nn.Conv2d(f5, f5, 5, padding=2)(b3))
     # Branch 4: MaxPool → 1x1
-    b4 = keras.layers.MaxPooling2D(3, strides=1, padding='same')(x)
-    b4 = keras.layers.Conv2D(fpool, 1, activation='relu', padding='same')(b4)
+    b4 = nn.MaxPool2d(3, stride=1, padding=1)(x)
+    b4 = F.relu(nn.Conv2d(in_channels, fpool, 1)(b4))
     # Concatenate along channel axis
-    return keras.layers.Concatenate()([b1, b2, b3, b4])</code></pre>
+    return torch.cat([b1, b2, b3, b4], dim=1)</code></pre>
 
       <h3>4. MobileNet — Efficient Convolutions</h3>
       <pre><code"># Standard Conv2D:      H*W*C_in*C_out*F*F  multiplications
 # Depthwise Separable:  H*W*C_in*F*F + H*W*C_in*C_out  (much less!)
 # Reduction factor ≈ 1/C_out + 1/F^2  → ~8-9x fewer operations
 
-# In Keras, use SeparableConv2D for depthwise separable:
-dws_layer = keras.layers.SeparableConv2D(64, 3, padding='same', activation='relu')
+# In PyTorch, use groups=in_channels for depthwise, then 1x1 for pointwise:
+class DepthwiseSeparableConv(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.depthwise = nn.Conv2d(64, 64, 3, padding=1, groups=64)
+        self.pointwise = nn.Conv2d(64, 64, 1)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        return self.relu(x)
+
+dws_layer = DepthwiseSeparableConv()
 
 # Load pre-trained MobileNetV2 and run inference
-base = keras.applications.MobileNetV2(weights='imagenet', include_top=True)
-# Preprocess: scale to [-1, 1]
-preprocess = keras.applications.mobilenet_v2.preprocess_input
-decode     = keras.applications.mobilenet_v2.decode_predictions
+import torch
+import torchvision.models as models
+from torchvision.models import MobileNet_V2_Weights
 
-import numpy as np
-dummy_img = np.random.randint(0, 255, (1, 224, 224, 3)).astype('float32')
-preds = base.predict(preprocess(dummy_img))
-print(decode(preds, top=3))</code></pre>
+weights = MobileNet_V2_Weights.IMAGENET1K_V1
+base = models.mobilenet_v2(weights=weights)
+base.eval()
+preprocess = weights.transforms()   # scales/normalizes to ImageNet stats
+categories = weights.meta["categories"]
+
+dummy_img = torch.randint(0, 255, (1, 3, 224, 224), dtype=torch.uint8)
+with torch.no_grad():
+    preds = base(preprocess(dummy_img))
+top3 = torch.topk(preds.softmax(dim=1), 3)
+print([categories[i] for i in top3.indices[0]])</code></pre>
 
       <h3>5. Pre-trained ResNet50 Inference</h3>
-      <pre><code">resnet = keras.applications.ResNet50(weights='imagenet')
+      <pre><code">import torch
+from torchvision.models import resnet50, ResNet50_Weights
+from PIL import Image
+
+weights = ResNet50_Weights.IMAGENET1K_V2
+resnet = resnet50(weights=weights)
+resnet.eval()
+preprocess = weights.transforms()
+categories = weights.meta["categories"]
 
 # Load and preprocess an image
-from tensorflow.keras.preprocessing import image
-from tensorflow.keras.applications.resnet50 import preprocess_input, decode_predictions
+img = Image.open('dog.jpg').convert('RGB')
+x   = preprocess(img).unsqueeze(0)   # add batch dimension
 
-img      = image.load_img('dog.jpg', target_size=(224, 224))
-x        = image.img_to_array(img)
-x        = np.expand_dims(x, axis=0)
-x        = preprocess_input(x)
-
-preds = resnet.predict(x)
-print('Predicted:', decode_predictions(preds, top=3)[0])</code></pre>
+with torch.no_grad():
+    preds = resnet(x)
+top3 = torch.topk(preds.softmax(dim=1), 3)
+print('Predicted:', [categories[i] for i in top3.indices[0]])</code></pre>
     `,
   },
   {
@@ -437,7 +568,7 @@ def nms(boxes, scores, iou_threshold=0.5):
     keep     = []
     while order:
         i = order.pop(0); keep.append(i)
-        order = [j for j in order if compute_iou(boxes[i], boxes[j]) < iou_threshold]
+        order = [j for j in order if compute_iou(boxes[i], boxes[j]) &lt; iou_threshold]
     return keep</code></pre>
 
       <h3>5. Evaluation: mAP</h3>
@@ -464,7 +595,7 @@ def nms(boxes, scores, iou_threshold=0.5):
   },
   {
     title: "Semantic Segmentation: U-Net to Mask R-CNN",
-    description: "Fully convolutional networks, transposed convolutions for upsampling, U-Net encoder-decoder with skip connections built in Keras, Mask R-CNN, and mIoU evaluation.",
+    description: "Fully convolutional networks, transposed convolutions for upsampling, U-Net encoder-decoder with skip connections built in PyTorch, Mask R-CNN, and mIoU evaluation.",
     date: "২৩ মে, ২০২৬",
     category: "Convolutional Neural Network",
     readTime: 12,
@@ -489,86 +620,148 @@ def nms(boxes, scores, iou_threshold=0.5):
 #
 # Transposed Convolution (deconv): learnable upsampling
 #   → opposite of conv: spreads input, pads with zeros, applies filter
-#   keras.layers.Conv2DTranspose(filters, kernel, strides=2, padding='same')
-#     strides=2 → doubles spatial dimensions
+#   nn.ConvTranspose2d(in_channels, out_channels, kernel, stride=2, padding=..., output_padding=...)
+#     stride=2 → doubles spatial dimensions
 
-import tensorflow as tf
-from tensorflow import keras
+import torch
+import torch.nn as nn
 
-# Encoder: downsample
-inp = keras.Input(shape=(128, 128, 3))
-x   = keras.layers.Conv2D(32, 3, activation='relu', padding='same')(inp)
-x   = keras.layers.MaxPooling2D(2)(x)     # 64x64
-x   = keras.layers.Conv2D(64, 3, activation='relu', padding='same')(x)
-x   = keras.layers.MaxPooling2D(2)(x)     # 32x32
+class SimpleFCN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # Encoder: downsample
+        self.enc1  = nn.Conv2d(3, 32, 3, padding=1)
+        self.pool1 = nn.MaxPool2d(2)     # 64x64
+        self.enc2  = nn.Conv2d(32, 64, 3, padding=1)
+        self.pool2 = nn.MaxPool2d(2)     # 32x32
 
-# Decoder: upsample
-x   = keras.layers.Conv2DTranspose(64, 3, strides=2, padding='same', activation='relu')(x)  # 64x64
-x   = keras.layers.Conv2DTranspose(32, 3, strides=2, padding='same', activation='relu')(x)  # 128x128
-out = keras.layers.Conv2D(1, 1, activation='sigmoid')(x)  # binary segmentation
-fcn = keras.Model(inp, out)
-print(f"Input: {inp.shape} → Output: {out.shape}")</code></pre>
+        # Decoder: upsample
+        self.up1 = nn.ConvTranspose2d(64, 64, 3, stride=2, padding=1, output_padding=1)  # 64x64
+        self.up2 = nn.ConvTranspose2d(64, 32, 3, stride=2, padding=1, output_padding=1)  # 128x128
+        self.out_conv = nn.Conv2d(32, 1, 1)   # binary segmentation
+
+    def forward(self, x):
+        x = torch.relu(self.enc1(x))
+        x = self.pool1(x)
+        x = torch.relu(self.enc2(x))
+        x = self.pool2(x)
+        x = torch.relu(self.up1(x))
+        x = torch.relu(self.up2(x))
+        return torch.sigmoid(self.out_conv(x))
+
+fcn = SimpleFCN()
+inp = torch.randn(1, 3, 128, 128)
+out = fcn(inp)
+print(f"Input: {tuple(inp.shape)} → Output: {tuple(out.shape)}")</code></pre>
 
       <h3>3. U-Net — Skip Connections for Sharp Boundaries</h3>
-      <pre><code">def unet(input_shape=(128, 128, 1), num_classes=1):
-    inp = keras.Input(shape=input_shape)
+      <pre><code">class UNet(nn.Module):
+    def __init__(self, in_channels=1, num_classes=1):
+        super().__init__()
+        # Encoder (contracting path)
+        self.c1_conv1 = nn.Conv2d(in_channels, 16, 3, padding=1)
+        self.c1_relu1 = nn.ReLU()
+        self.c1_conv2 = nn.Conv2d(16, 16, 3, padding=1)
+        self.c1_relu2 = nn.ReLU()
+        self.p1 = nn.MaxPool2d(2)   # 64x64
 
-    # Encoder (contracting path)
-    c1 = keras.layers.Conv2D(16, 3, activation='relu', padding='same')(inp)
-    c1 = keras.layers.Conv2D(16, 3, activation='relu', padding='same')(c1)
-    p1 = keras.layers.MaxPooling2D(2)(c1)   # 64x64
+        self.c2_conv1 = nn.Conv2d(16, 32, 3, padding=1)
+        self.c2_relu1 = nn.ReLU()
+        self.c2_conv2 = nn.Conv2d(32, 32, 3, padding=1)
+        self.c2_relu2 = nn.ReLU()
+        self.p2 = nn.MaxPool2d(2)   # 32x32
 
-    c2 = keras.layers.Conv2D(32, 3, activation='relu', padding='same')(p1)
-    c2 = keras.layers.Conv2D(32, 3, activation='relu', padding='same')(c2)
-    p2 = keras.layers.MaxPooling2D(2)(c2)   # 32x32
+        # Bottleneck
+        self.bn_conv1 = nn.Conv2d(32, 64, 3, padding=1)
+        self.bn_relu1 = nn.ReLU()
+        self.bn_conv2 = nn.Conv2d(64, 64, 3, padding=1)
+        self.bn_relu2 = nn.ReLU()
 
-    # Bottleneck
-    bn = keras.layers.Conv2D(64, 3, activation='relu', padding='same')(p2)
-    bn = keras.layers.Conv2D(64, 3, activation='relu', padding='same')(bn)
+        # Decoder (expanding path) with skip connections
+        self.up1 = nn.ConvTranspose2d(64, 32, 2, stride=2)   # 64x64
+        self.d1_conv1 = nn.Conv2d(64, 32, 3, padding=1)   # 64 = 32(up1) + 32(skip c2)
+        self.d1_relu1 = nn.ReLU()
+        self.d1_conv2 = nn.Conv2d(32, 32, 3, padding=1)
+        self.d1_relu2 = nn.ReLU()
 
-    # Decoder (expanding path) with skip connections
-    u1 = keras.layers.Conv2DTranspose(32, 2, strides=2, padding='same')(bn)  # 64x64
-    u1 = keras.layers.Concatenate()([u1, c2])   # skip connection from encoder
-    d1 = keras.layers.Conv2D(32, 3, activation='relu', padding='same')(u1)
-    d1 = keras.layers.Conv2D(32, 3, activation='relu', padding='same')(d1)
+        self.up2 = nn.ConvTranspose2d(32, 16, 2, stride=2)   # 128x128
+        self.d2_conv1 = nn.Conv2d(32, 16, 3, padding=1)   # 32 = 16(up2) + 16(skip c1)
+        self.d2_relu1 = nn.ReLU()
+        self.d2_conv2 = nn.Conv2d(16, 16, 3, padding=1)
+        self.d2_relu2 = nn.ReLU()
 
-    u2 = keras.layers.Conv2DTranspose(16, 2, strides=2, padding='same')(d1)  # 128x128
-    u2 = keras.layers.Concatenate()([u2, c1])   # skip connection
-    d2 = keras.layers.Conv2D(16, 3, activation='relu', padding='same')(u2)
-    d2 = keras.layers.Conv2D(16, 3, activation='relu', padding='same')(d2)
+        self.out_conv = nn.Conv2d(16, num_classes, 1)
+        self.num_classes = num_classes
 
-    activation = 'sigmoid' if num_classes == 1 else 'softmax'
-    out = keras.layers.Conv2D(num_classes, 1, activation=activation)(d2)
-    return keras.Model(inp, out)
+    def forward(self, x):
+        c1 = self.c1_relu1(self.c1_conv1(x))
+        c1 = self.c1_relu2(self.c1_conv2(c1))
+        p1 = self.p1(c1)
 
-model = unet(input_shape=(128, 128, 1), num_classes=1)
-model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-model.summary()</code></pre>
+        c2 = self.c2_relu1(self.c2_conv1(p1))
+        c2 = self.c2_relu2(self.c2_conv2(c2))
+        p2 = self.p2(c2)
+
+        bn = self.bn_relu1(self.bn_conv1(p2))
+        bn = self.bn_relu2(self.bn_conv2(bn))
+
+        u1 = self.up1(bn)
+        u1 = torch.cat([u1, c2], dim=1)   # skip connection from encoder
+        d1 = self.d1_relu1(self.d1_conv1(u1))
+        d1 = self.d1_relu2(self.d1_conv2(d1))
+
+        u2 = self.up2(d1)
+        u2 = torch.cat([u2, c1], dim=1)   # skip connection
+        d2 = self.d2_relu1(self.d2_conv1(u2))
+        d2 = self.d2_relu2(self.d2_conv2(d2))
+
+        out = self.out_conv(d2)
+        return torch.sigmoid(out) if self.num_classes == 1 else torch.softmax(out, dim=1)
+
+model = UNet(in_channels=1, num_classes=1)
+criterion = nn.BCELoss()
+optimizer = torch.optim.Adam(model.parameters())
+print(model)</code></pre>
 
       <h3>4. Training U-Net with Custom Data</h3>
       <pre><code"># Synthetic segmentation data for demonstration
 import numpy as np
+from torch.utils.data import TensorDataset, DataLoader
 
 def make_segmentation_data(n=200, img_size=128):
-    X = np.zeros((n, img_size, img_size, 1), dtype='float32')
-    Y = np.zeros((n, img_size, img_size, 1), dtype='float32')
+    X = np.zeros((n, 1, img_size, img_size), dtype='float32')
+    Y = np.zeros((n, 1, img_size, img_size), dtype='float32')
     for i in range(n):
         # random circle
         cx, cy = np.random.randint(20, img_size-20, 2)
         r      = np.random.randint(10, 30)
         xx, yy = np.ogrid[:img_size, :img_size]
-        mask   = ((xx-cx)**2 + (yy-cy)**2) <= r**2
-        X[i, :, :, 0] = np.random.randn(img_size, img_size) * 0.1
-        X[i, mask, 0] += 1.0   # bright circle
-        Y[i, mask, 0]  = 1.0
-    return X, Y
+        mask   = ((xx-cx)**2 + (yy-cy)**2) &lt;= r**2
+        X[i, 0] = np.random.randn(img_size, img_size) * 0.1
+        X[i, 0][mask] += 1.0   # bright circle
+        Y[i, 0][mask]  = 1.0
+    return torch.from_numpy(X), torch.from_numpy(Y)
 
 X, Y = make_segmentation_data(400)
 X_tr, X_te, Y_tr, Y_te = X[:320], X[320:], Y[:320], Y[320:]
+train_loader = DataLoader(TensorDataset(X_tr, Y_tr), batch_size=16, shuffle=True)
 
-model = unet(input_shape=(128, 128, 1), num_classes=1)
-model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-history = model.fit(X_tr, Y_tr, epochs=20, batch_size=16, validation_data=(X_te, Y_te))</code></pre>
+model = UNet(in_channels=1, num_classes=1)
+criterion = nn.BCELoss()
+optimizer = torch.optim.Adam(model.parameters())
+
+for epoch in range(20):
+    model.train()
+    for xb, yb in train_loader:
+        optimizer.zero_grad()
+        loss = criterion(model(xb), yb)
+        loss.backward()
+        optimizer.step()
+
+    model.eval()
+    with torch.no_grad():
+        val_loss = criterion(model(X_te), Y_te)
+    print(f"Epoch {epoch+1}: val_loss={val_loss.item():.4f}")</code></pre>
 
       <h3>5. Evaluation Metrics</h3>
       <pre><code"># Pixel Accuracy: correct pixels / total pixels (misleading on imbalanced data)
@@ -576,13 +769,15 @@ history = model.fit(X_tr, Y_tr, epochs=20, batch_size=16, validation_data=(X_te,
 # mIoU: mean IoU across all classes (primary segmentation metric)
 
 def compute_iou(y_true, y_pred, threshold=0.5):
-    y_pred_bin = (y_pred > threshold).astype(float)
+    y_pred_bin = (y_pred > threshold).float()
     intersection = (y_true * y_pred_bin).sum()
     union        = y_true.sum() + y_pred_bin.sum() - intersection
-    return intersection / (union + 1e-8)
+    return (intersection / (union + 1e-8)).item()
 
-y_pred = model.predict(X_te)
-ious   = [compute_iou(Y_te[i,:,:,0], y_pred[i,:,:,0]) for i in range(len(X_te))]
+model.eval()
+with torch.no_grad():
+    y_pred = model(X_te)
+ious = [compute_iou(Y_te[i,0], y_pred[i,0]) for i in range(len(X_te))]
 print(f"Mean IoU: {np.mean(ious):.4f}")</code></pre>
     `,
   },
@@ -595,101 +790,202 @@ print(f"Mean IoU: {np.mean(ious):.4f}")</code></pre>
     slug: "cnn-project-image-classification",
     content: `
       <h3>1. Dataset & Setup</h3>
-      <pre><code>import tensorflow as tf
-from tensorflow import keras
+      <pre><code>import torch
+import torch.nn as nn
+import torchvision
+import torchvision.transforms as transforms
 import numpy as np
 import matplotlib.pyplot as plt
 
-(X_train, y_train), (X_test, y_test) = keras.datasets.cifar10.load_data()
-X_train = X_train.astype('float32') / 255.0
-X_test  = X_test.astype('float32')  / 255.0
-y_train, y_test = y_train.squeeze(), y_test.squeeze()
+transform = transforms.ToTensor()
+train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+test_set  = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
 class_names = ['airplane','automobile','bird','cat','deer',
                'dog','frog','horse','ship','truck']
-print(f"Train: {X_train.shape}, Test: {X_test.shape}")
+print(f"Train: {len(train_set)}, Test: {len(test_set)}")
 
 # Sample images
 fig, axes = plt.subplots(2, 5, figsize=(12, 5))
 for i, ax in enumerate(axes.flat):
-    ax.imshow(X_train[i]); ax.set_title(class_names[y_train[i]]); ax.axis('off')
+    img, label = train_set[i]
+    ax.imshow(img.permute(1, 2, 0)); ax.set_title(class_names[label]); ax.axis('off')
 plt.tight_layout(); plt.show()</code></pre>
 
       <h3>2. Data Augmentation Pipeline</h3>
-      <pre><code">augment = keras.Sequential([
-    keras.layers.RandomFlip("horizontal"),
-    keras.layers.RandomRotation(0.1),
-    keras.layers.RandomZoom(0.15),
-    keras.layers.RandomContrast(0.1),
-    keras.layers.RandomTranslation(0.1, 0.1),
-], name='augmentation')
+      <pre><code">augment = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(10),
+    transforms.RandomResizedCrop(32, scale=(0.85, 1.0)),
+    transforms.ColorJitter(contrast=0.1),
+    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+])
 
 # Visualize augmented images
+sample_img, _ = train_set[0]
 fig, axes = plt.subplots(1, 5, figsize=(12, 3))
 for ax in axes:
-    img = augment(X_train[0:1], training=True)[0]
-    ax.imshow(img); ax.axis('off')
+    img = augment(sample_img)
+    ax.imshow(img.permute(1, 2, 0)); ax.axis('off')
 plt.suptitle('Augmented versions of one image'); plt.show()</code></pre>
 
       <h3>3. Three Models</h3>
-      <pre><code">def build_simple_cnn():
-    return keras.Sequential([
-        augment,
-        keras.layers.Conv2D(32, 3, activation='relu', padding='same', input_shape=(32,32,3)),
-        keras.layers.BatchNormalization(),
-        keras.layers.MaxPooling2D(2),
-        keras.layers.Conv2D(64, 3, activation='relu', padding='same'),
-        keras.layers.BatchNormalization(),
-        keras.layers.MaxPooling2D(2),
-        keras.layers.Conv2D(128, 3, activation='relu', padding='same'),
-        keras.layers.GlobalAveragePooling2D(),
-        keras.layers.Dropout(0.4),
-        keras.layers.Dense(10, activation='softmax'),
-    ])
+      <pre><code"># Note: augmentation (previous block) is applied via the dataset's transform
+# pipeline rather than embedded as a model layer — the idiomatic PyTorch way.
 
-def build_resnet():
-    inp = keras.Input(shape=(32,32,3))
-    x   = augment(inp)
-    x   = keras.layers.Conv2D(32, 3, padding='same')(x)
-    x   = keras.layers.BatchNormalization()(x); x = keras.layers.ReLU()(x)
-    for f in [32, 64, 128]:
-        shortcut = keras.layers.Conv2D(f, 1)(x) if x.shape[-1] != f else x
-        y = keras.layers.Conv2D(f, 3, padding='same')(x)
-        y = keras.layers.BatchNormalization()(y); y = keras.layers.ReLU()(y)
-        y = keras.layers.Conv2D(f, 3, padding='same')(y)
-        y = keras.layers.BatchNormalization()(y)
-        x = keras.layers.ReLU()(keras.layers.Add()([y, shortcut]))
-    x   = keras.layers.GlobalAveragePooling2D()(x)
-    out = keras.layers.Dense(10, activation='softmax')(x)
-    return keras.Model(inp, out)
+class SimpleCNN(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 32, 3, padding=1)
+        self.bn1   = nn.BatchNorm2d(32)
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(2)
 
-def build_transfer():
-    base = keras.applications.MobileNetV2(input_shape=(32,32,3), include_top=False, weights='imagenet')
-    base.trainable = False
-    inp = keras.Input(shape=(32,32,3))
-    x   = augment(inp)
-    x   = keras.applications.mobilenet_v2.preprocess_input(x * 255)
-    x   = base(x, training=False)
-    x   = keras.layers.GlobalAveragePooling2D()(x)
-    x   = keras.layers.Dense(128, activation='relu')(x)
-    x   = keras.layers.Dropout(0.3)(x)
-    out = keras.layers.Dense(10, activation='softmax')(x)
-    return keras.Model(inp, out)</code></pre>
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
+        self.bn2   = nn.BatchNorm2d(64)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool2d(2)
+
+        self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
+        self.relu3 = nn.ReLU()
+
+        self.gap     = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()
+        self.dropout = nn.Dropout(0.4)
+        self.fc      = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        x = self.pool1(self.relu1(self.bn1(self.conv1(x))))
+        x = self.pool2(self.relu2(self.bn2(self.conv2(x))))
+        x = self.relu3(self.conv3(x))
+        x = self.gap(x)
+        x = self.flatten(x)
+        x = self.dropout(x)
+        return self.fc(x)
+
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, filters):
+        super().__init__()
+        self.shortcut = nn.Conv2d(in_channels, filters, 1) if in_channels != filters else nn.Identity()
+        self.conv1 = nn.Conv2d(in_channels, filters, 3, padding=1)
+        self.bn1   = nn.BatchNorm2d(filters)
+        self.conv2 = nn.Conv2d(filters, filters, 3, padding=1)
+        self.bn2   = nn.BatchNorm2d(filters)
+        self.relu  = nn.ReLU()
+
+    def forward(self, x):
+        shortcut = self.shortcut(x)
+        y = self.relu(self.bn1(self.conv1(x)))
+        y = self.bn2(self.conv2(y))
+        return self.relu(y + shortcut)
+
+class ResNetCNN(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.stem_conv = nn.Conv2d(3, 32, 3, padding=1)
+        self.stem_bn   = nn.BatchNorm2d(32)
+        self.stem_relu = nn.ReLU()
+
+        in_ch = 32
+        self.res_blocks = nn.ModuleList()
+        for f in [32, 64, 128]:
+            self.res_blocks.append(ResidualBlock(in_ch, f))
+            in_ch = f
+
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        x = self.stem_relu(self.stem_bn(self.stem_conv(x)))
+        for block in self.res_blocks:
+            x = block(x)
+        x = self.pool(x).flatten(1)
+        return self.fc(x)
+
+class MobileNetTransfer(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        base = torchvision.models.mobilenet_v2(weights=torchvision.models.MobileNet_V2_Weights.IMAGENET1K_V1)
+        for p in base.parameters():
+            p.requires_grad = False   # freeze base
+        self.base = base.features
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(1280, 128)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.3)
+        self.fc2 = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        x = nn.functional.interpolate(x, size=(96, 96), mode='bilinear', align_corners=False)
+        x = self.base(x)
+        x = self.pool(x)
+        x = self.flatten(x)
+        x = self.relu(self.fc1(x))
+        x = self.dropout(x)
+        return self.fc2(x)</code></pre>
 
       <h3>4. Training & Comparison</h3>
-      <pre><code">callbacks = [
-    keras.callbacks.EarlyStopping(patience=8, restore_best_weights=True),
-    keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=4, min_lr=1e-6),
-]
+      <pre><code">from torch.utils.data import DataLoader, random_split
 
-models = {'Simple CNN': build_simple_cnn(), 'ResNet': build_resnet(), 'MobileNetV2': build_transfer()}
+train_size = int(0.9 * len(train_set))
+val_size   = len(train_set) - train_size
+train_subset, val_subset = random_split(train_set, [train_size, val_size])
+train_loader = DataLoader(train_subset, batch_size=64, shuffle=True)
+val_loader   = DataLoader(val_subset, batch_size=64)
+test_loader  = DataLoader(test_set, batch_size=64)
+
+def train_model(model, epochs=50, patience=8):
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters())
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4, min_lr=1e-6)
+
+    best_val_acc, epochs_no_improve, best_state = 0.0, 0, None
+    for epoch in range(epochs):
+        model.train()
+        for xb, yb in train_loader:
+            optimizer.zero_grad()
+            loss = criterion(model(xb), yb)
+            loss.backward()
+            optimizer.step()
+
+        model.eval()
+        correct, total, val_loss_sum = 0, 0, 0.0
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                out = model(xb)
+                val_loss_sum += criterion(out, yb).item()
+                correct += (out.argmax(dim=1) == yb).sum().item()
+                total   += yb.size(0)
+        val_acc = correct / total
+        scheduler.step(val_loss_sum)
+
+        if val_acc > best_val_acc:
+            best_val_acc, best_state, epochs_no_improve = val_acc, model.state_dict(), 0
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:   # early stopping
+                break
+
+    model.load_state_dict(best_state)   # restore best weights
+    return model, best_val_acc
+
+def evaluate(model):
+    model.eval()
+    correct, total = 0, 0
+    with torch.no_grad():
+        for xb, yb in test_loader:
+            correct += (model(xb).argmax(dim=1) == yb).sum().item()
+            total   += yb.size(0)
+    return correct / total
+
+models_dict = {'Simple CNN': SimpleCNN(), 'ResNet': ResNetCNN(), 'MobileNetV2': MobileNetTransfer()}
 results = {}
-for name, m in models.items():
-    m.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-    h = m.fit(X_train, y_train, epochs=50, batch_size=64,
-              validation_split=0.1, callbacks=callbacks, verbose=0)
-    _, acc = m.evaluate(X_test, y_test, verbose=0)
-    results[name] = {'val_acc': max(h.history['val_accuracy']), 'test_acc': acc, 'params': m.count_params()}
+for name, m in models_dict.items():
+    m, val_acc = train_model(m, epochs=50)
+    test_acc = evaluate(m)
+    params = sum(p.numel() for p in m.parameters())
+    results[name] = {'val_acc': val_acc, 'test_acc': test_acc, 'params': params}
 
 for name, r in results.items():
     print(f"{name:15s}: test={r['test_acc']:.4f}, params={r['params']:,}")</code></pre>
@@ -698,27 +994,39 @@ for name, r in results.items():
       <pre><code"># Grad-CAM: gradient of class score w.r.t. last conv layer activations
 # Positive gradients → regions important for this class
 
-def grad_cam(model, img, class_idx, last_conv_name):
-    grad_model = keras.Model(model.inputs,
-                             [model.get_layer(last_conv_name).output, model.output])
-    with tf.GradientTape() as tape:
-        conv_out, preds = grad_model(img[np.newaxis])
-        loss = preds[:, class_idx]
-    grads    = tape.gradient(loss, conv_out)
-    weights  = tf.reduce_mean(grads, axis=(0, 1, 2))        # global average pool
-    cam      = tf.reduce_sum(conv_out[0] * weights, axis=-1)
-    cam      = tf.maximum(cam, 0) / (tf.math.reduce_max(cam) + 1e-8)
-    cam      = tf.image.resize(cam[..., tf.newaxis], img.shape[:2]).numpy().squeeze()
+def grad_cam(model, img, class_idx, target_layer):
+    activations, gradients = [], []
+    fwd_handle = target_layer.register_forward_hook(lambda m, i, o: activations.append(o))
+    bwd_handle = target_layer.register_full_backward_hook(lambda m, gi, go: gradients.append(go[0]))
+
+    model.eval()
+    out = model(img.unsqueeze(0))
+    model.zero_grad()
+    out[0, class_idx].backward()
+    fwd_handle.remove(); bwd_handle.remove()
+
+    conv_out = activations[0][0]                 # (C, H, W)
+    grads    = gradients[0][0]                    # (C, H, W)
+    weights  = grads.mean(dim=(1, 2))             # global average pool
+    cam      = torch.relu((conv_out * weights[:, None, None]).sum(dim=0))
+    cam      = cam / (cam.max() + 1e-8)
+    cam      = torch.nn.functional.interpolate(
+        cam[None, None], size=img.shape[1:], mode='bilinear', align_corners=False
+    ).squeeze().detach().numpy()
     return cam
 
 import cv2
-img       = X_test[42]
-cam       = grad_cam(models['Simple CNN'], img, y_test[42], 'conv2d_2')
+img_tensor, label = test_set[42]
+model           = models_dict['Simple CNN']
+last_conv_layer = model.conv3   # last Conv2d layer in SimpleCNN
+cam             = grad_cam(model, img_tensor, label, last_conv_layer)
+
+img_np    = img_tensor.permute(1, 2, 0).numpy()
 heatmap   = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
-overlay   = cv2.addWeighted(np.uint8(img * 255), 0.6, heatmap, 0.4, 0)
+overlay   = cv2.addWeighted(np.uint8(img_np * 255), 0.6, heatmap, 0.4, 0)
 
 fig, axes = plt.subplots(1, 3, figsize=(10, 3))
-axes[0].imshow(img);    axes[0].set_title('Original')
+axes[0].imshow(img_np); axes[0].set_title('Original')
 axes[1].imshow(cam, cmap='jet'); axes[1].set_title('Grad-CAM')
 axes[2].imshow(overlay[:,:,::-1]); axes[2].set_title('Overlay')
 [ax.axis('off') for ax in axes]; plt.tight_layout(); plt.show()</code></pre>

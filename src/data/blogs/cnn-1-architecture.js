@@ -81,22 +81,30 @@ print(output)
         <tr><td>Learned (deep layer)</td><td>Complex textures, parts</td><td>Layer 3+</td></tr>
       </tbody>
     </table>
-    <pre><code>import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-import numpy as np
+    <pre><code>import torch
+import torch.nn as nn
 
 # RGB image-এ multiple filter: C_in=3 (RGB), C_out=32 filters
-model_check = keras.Sequential([
-    layers.Input(shape=(28, 28, 1)),
-    layers.Conv2D(filters=32, kernel_size=(3, 3), activation='relu', padding='same'),
-    # Output shape: (28, 28, 32) — 32টি feature map
-    layers.Conv2D(filters=64, kernel_size=(3, 3), activation='relu', padding='same'),
-    # Output shape: (28, 28, 64) — 64টি feature map
-])
+class ModelCheck(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
+        self.relu1 = nn.ReLU()
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.relu2 = nn.ReLU()
 
-model_check.summary()
-# দেখবেন প্রতিটি layer-এর output shape-এ last dim বাড়ছে
+    def forward(self, x):
+        x = self.relu1(self.conv1(x))
+        # Output shape: (28, 28, 32) — 32টি feature map
+        x = self.relu2(self.conv2(x))
+        # Output shape: (28, 28, 64) — 64টি feature map
+        return x
+
+model_check = ModelCheck()
+print(model_check)
+total_params = sum(p.numel() for p in model_check.parameters())
+print(f"Total params: {total_params:,}")
+# দেখবেন প্রতিটি layer-এর parameter count input channel অনুযায়ী বাড়ছে
 </code></pre>
 
     <h3>৩. Stride এবং Output Size Formula</h3>
@@ -144,22 +152,21 @@ for W, F, P, S, desc in configs:
         <tr><td>causal</td><td>Left only</td><td>W (1D sequences)</td><td>Time-series, NLP</td></tr>
       </tbody>
     </table>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers
-import numpy as np
+    <pre><code>import torch
+import torch.nn as nn
 
 # Padding comparison
-x = np.random.randn(1, 28, 28, 1).astype(np.float32)
+x = torch.randn(1, 1, 28, 28)
 
-conv_valid = layers.Conv2D(32, (3,3), padding='valid')
-conv_same  = layers.Conv2D(32, (3,3), padding='same')
+conv_valid = nn.Conv2d(1, 32, kernel_size=3, padding=0)   # 'valid'
+conv_same  = nn.Conv2d(1, 32, kernel_size=3, padding=1)   # 'same' (for 3x3, stride 1)
 
 out_valid = conv_valid(x)
 out_same  = conv_same(x)
 
-print(f"Input shape:        {x.shape}")
-print(f"Valid padding out:  {out_valid.shape}")   # (1, 26, 26, 32)
-print(f"Same  padding out:  {out_same.shape}")    # (1, 28, 28, 32)
+print(f"Input shape:        {tuple(x.shape)}")
+print(f"Valid padding out:  {tuple(out_valid.shape)}")   # (1, 32, 26, 26)
+print(f"Same  padding out:  {tuple(out_same.shape)}")    # (1, 32, 28, 28)
 </code></pre>
 
     <h3>৫. Parameter Count: Conv Layer-এ কতটি Weight?</h3>
@@ -231,48 +238,58 @@ print(f"AlexNet (2 layers) RF: {rf_alexnet}x{rf_alexnet}")
       <li><strong>Translation Invariance:</strong> বিড়ালটি ছবির বাম বা ডানে থাকলেও একই kernel সেই feature detect করবে। Model position-independent pattern শেখে।</li>
       <li><strong>Local Connectivity:</strong> প্রতিটি neuron শুধু local neighborhood দেখে, পুরো image নয়। Image-এ local structure (edge, corner, texture) থাকে।</li>
     </ul>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers, models
-import numpy as np
+    <pre><code>import torch
+import torch.nn as nn
 
 # Full CNN architecture দেখি — shapes ট্র্যাক করে
-def build_cnn_with_shapes():
-    inputs = tf.keras.Input(shape=(32, 32, 3))
+class CNNWithShapes(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        # Block 1
+        self.conv1 = nn.Conv2d(3, 32, 3, padding=1)
+        self.relu1 = nn.ReLU()      # 32x32x32
+        self.conv2 = nn.Conv2d(32, 32, 3, padding=1)
+        self.relu2 = nn.ReLU()      # 32x32x32
+        self.pool1 = nn.MaxPool2d(2)   # 16x16x32
 
-    # Block 1
-    x = layers.Conv2D(32, (3,3), padding='same', activation='relu')(inputs)
-    # 32x32x32
-    x = layers.Conv2D(32, (3,3), padding='same', activation='relu')(x)
-    # 32x32x32
-    x = layers.MaxPooling2D((2,2))(x)
-    # 16x16x32
+        # Block 2
+        self.conv3 = nn.Conv2d(32, 64, 3, padding=1)
+        self.relu3 = nn.ReLU()      # 16x16x64
+        self.conv4 = nn.Conv2d(64, 64, 3, padding=1)
+        self.relu4 = nn.ReLU()      # 16x16x64
+        self.pool2 = nn.MaxPool2d(2)   # 8x8x64
 
-    # Block 2
-    x = layers.Conv2D(64, (3,3), padding='same', activation='relu')(x)
-    # 16x16x64
-    x = layers.Conv2D(64, (3,3), padding='same', activation='relu')(x)
-    # 16x16x64
-    x = layers.MaxPooling2D((2,2))(x)
-    # 8x8x64
+        # Classifier head
+        self.flatten = nn.Flatten()   # 8*8*64 = 4096
+        self.fc1 = nn.Linear(4096, 256)
+        self.relu5 = nn.ReLU()
+        self.fc2 = nn.Linear(256, num_classes)
 
-    # Classifier head
-    x = layers.Flatten()(x)       # 8*8*64 = 4096
-    x = layers.Dense(256, activation='relu')(x)
-    outputs = layers.Dense(10, activation='softmax')(x)
+    def forward(self, x):
+        x = self.relu1(self.conv1(x))
+        x = self.relu2(self.conv2(x))
+        x = self.pool1(x)
 
-    model = models.Model(inputs, outputs)
-    return model
+        x = self.relu3(self.conv3(x))
+        x = self.relu4(self.conv4(x))
+        x = self.pool2(x)
 
-model = build_cnn_with_shapes()
-model.summary()
+        x = self.flatten(x)
+        x = self.relu5(self.fc1(x))
+        return self.fc2(x)
+
+model = CNNWithShapes()
+print(model)
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Total params: {total_params:,}")
 
 # Parameter count manually verify করি:
 # Conv1: 3*3*3*32 + 32 = 896
 # Conv2: 3*3*32*32 + 32 = 9,248
 # Conv3: 3*3*32*64 + 64 = 18,496
 # Conv4: 3*3*64*64 + 64 = 36,928
-# Dense1: 4096*256 + 256 = 1,048,832
-# Dense2: 256*10 + 10 = 2,570
+# Linear1: 4096*256 + 256 = 1,048,832
+# Linear2: 256*10 + 10 = 2,570
 # Total: ~1,116,970
 </code></pre>
   `,

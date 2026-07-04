@@ -1,7 +1,7 @@
 export const autoencoder_2_denoising = {
   slug: 'autoencoder-2-denoising',
   title: 'ডিনয়েজিং অটোএনকোডার: নয়েজ থেকে মুক্তি',
-  description: 'ডিনয়েজিং অটোএনকোডার কীভাবে নয়েজযুক্ত ইনপুট থেকে পরিষ্কার ডেটা শেখে, Gaussian noise, DAE ট্রেনিং কৌশল এবং MNIST-এ সম্পূর্ণ Keras ইমপ্লিমেন্টেশন।',
+  description: 'ডিনয়েজিং অটোএনকোডার কীভাবে নয়েজযুক্ত ইনপুট থেকে পরিষ্কার ডেটা শেখে, Gaussian noise, DAE ট্রেনিং কৌশল এবং MNIST-এ সম্পূর্ণ PyTorch ইমপ্লিমেন্টেশন।',
   date: 'মে ২০২৫',
   category: 'অটোএনকোডার',
   readTime: 13,
@@ -51,18 +51,19 @@ export const autoencoder_2_denoising = {
       <strong>রোবাস্টনেস:</strong> নয়েজে ট্রেনিং করলে নেটওয়ার্ক বাস্তব জগতের অপূর্ণ ডেটার সাথে মোকাবিলা করতে পারে।
     </p>
 
-    <h3>৫. Keras দিয়ে DAE ইমপ্লিমেন্টেশন</h3>
+    <h3>৫. PyTorch দিয়ে DAE ইমপ্লিমেন্টেশন</h3>
     <pre><code>import numpy as np
 import matplotlib.pyplot as plt
-from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras.datasets import mnist
+import torch
+from torchvision import datasets, transforms
 
 # ডেটা লোড
-(x_train, _), (x_test, _) = mnist.load_data()
+transform = transforms.ToTensor()
+train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+test_dataset  = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
 
-x_train = x_train.astype('float32') / 255.0
-x_test  = x_test.astype('float32')  / 255.0
+x_train = train_dataset.data.float() / 255.0
+x_test  = test_dataset.data.float()  / 255.0
 
 x_train = x_train.reshape(-1, 784)
 x_test  = x_test.reshape(-1, 784)
@@ -70,61 +71,95 @@ x_test  = x_test.reshape(-1, 784)
 # Gaussian নয়েজ যোগ করা
 noise_factor = 0.5
 
-x_train_noisy = x_train + noise_factor * np.random.randn(*x_train.shape)
-x_test_noisy  = x_test  + noise_factor * np.random.randn(*x_test.shape)
+x_train_noisy = x_train + noise_factor * torch.randn_like(x_train)
+x_test_noisy  = x_test  + noise_factor * torch.randn_like(x_test)
 
 # পিক্সেল মান ০ থেকে ১ এর মধ্যে রাখা
-x_train_noisy = np.clip(x_train_noisy, 0.0, 1.0)
-x_test_noisy  = np.clip(x_test_noisy,  0.0, 1.0)
+x_train_noisy = torch.clamp(x_train_noisy, 0.0, 1.0)
+x_test_noisy  = torch.clamp(x_test_noisy,  0.0, 1.0)
 
 print(f"Clean train shape: {x_train.shape}")
 print(f"Noisy train shape: {x_train_noisy.shape}")</code></pre>
 
-    <pre><code># DAE মডেল তৈরি
-def build_dae(input_dim=784, encoding_dim=128):
-    # এনকোডার
-    inp = keras.Input(shape=(input_dim,))
-    x = layers.Dense(512, activation='relu')(inp)
-    x = layers.Dense(256, activation='relu')(x)
-    encoded = layers.Dense(encoding_dim, activation='relu')(x)
+    <pre><code>import torch.nn as nn
 
-    # ডিকোডার
-    x = layers.Dense(256, activation='relu')(encoded)
-    x = layers.Dense(512, activation='relu')(x)
-    decoded = layers.Dense(input_dim, activation='sigmoid')(x)
+# DAE মডেল তৈরি
+class DenoisingAutoencoder(nn.Module):
+    def __init__(self, input_dim=784, encoding_dim=128):
+        super().__init__()
+        # এনকোডার
+        self.enc_fc1 = nn.Linear(input_dim, 512)
+        self.enc_fc2 = nn.Linear(512, 256)
+        self.enc_fc3 = nn.Linear(256, encoding_dim)
+        # ডিকোডার
+        self.dec_fc1 = nn.Linear(encoding_dim, 256)
+        self.dec_fc2 = nn.Linear(256, 512)
+        self.dec_fc3 = nn.Linear(512, input_dim)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
 
-    model = keras.Model(inp, decoded, name='denoising_autoencoder')
-    return model
+    def forward(self, x):
+        x = self.relu(self.enc_fc1(x))
+        x = self.relu(self.enc_fc2(x))
+        encoded = self.relu(self.enc_fc3(x))
+        x = self.relu(self.dec_fc1(encoded))
+        x = self.relu(self.dec_fc2(x))
+        return self.sigmoid(self.dec_fc3(x))
 
-dae = build_dae(encoding_dim=128)
-dae.compile(optimizer='adam', loss='binary_crossentropy')
-dae.summary()</code></pre>
+dae = DenoisingAutoencoder(encoding_dim=128)
+criterion = nn.BCELoss()
+optimizer = torch.optim.Adam(dae.parameters(), lr=0.001)
+print(dae)</code></pre>
 
     <pre><code># ট্রেনিং: নয়েজযুক্ত ইনপুট -> পরিষ্কার আউটপুট
-history = dae.fit(
-    x_train_noisy, x_train,       # নয়েজযুক্ত ইনপুট, পরিষ্কার টার্গেট
-    epochs=40,
-    batch_size=256,
-    shuffle=True,
-    validation_data=(x_test_noisy, x_test),
-    verbose=1
-)</code></pre>
+from torch.utils.data import DataLoader, TensorDataset
+
+train_loader = DataLoader(TensorDataset(x_train_noisy, x_train), batch_size=256, shuffle=True)
+test_loader  = DataLoader(TensorDataset(x_test_noisy, x_test),  batch_size=256)
+
+history = {'loss': [], 'val_loss': []}
+
+for epoch in range(40):
+    dae.train()
+    train_loss = 0.0
+    for noisy_xb, clean_xb in train_loader:   # নয়েজযুক্ত ইনপুট, পরিষ্কার টার্গেট
+        optimizer.zero_grad()
+        reconstructed = dae(noisy_xb)
+        loss = criterion(reconstructed, clean_xb)
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item() * noisy_xb.size(0)
+    train_loss /= len(train_loader.dataset)
+
+    dae.eval()
+    val_loss = 0.0
+    with torch.no_grad():
+        for noisy_xb, clean_xb in test_loader:
+            reconstructed = dae(noisy_xb)
+            val_loss += criterion(reconstructed, clean_xb).item() * noisy_xb.size(0)
+    val_loss /= len(test_loader.dataset)
+
+    history['loss'].append(train_loss)
+    history['val_loss'].append(val_loss)
+    print(f"Epoch {epoch+1}: loss={train_loss:.4f}, val_loss={val_loss:.4f}")</code></pre>
 
     <pre><code># ডিনয়েজিং রেজাল্ট দেখা
-x_test_denoised = dae.predict(x_test_noisy)
+dae.eval()
+with torch.no_grad():
+    x_test_denoised = dae(x_test_noisy).numpy()
 
 n = 10
 plt.figure(figsize=(20, 6))
 for i in range(n):
     # মূল পরিষ্কার ছবি
     ax = plt.subplot(3, n, i + 1)
-    plt.imshow(x_test[i].reshape(28, 28), cmap='gray')
+    plt.imshow(x_test[i].numpy().reshape(28, 28), cmap='gray')
     plt.title('Clean', fontsize=8)
     plt.axis('off')
 
     # নয়েজযুক্ত ছবি
     ax = plt.subplot(3, n, i + 1 + n)
-    plt.imshow(x_test_noisy[i].reshape(28, 28), cmap='gray')
+    plt.imshow(x_test_noisy[i].numpy().reshape(28, 28), cmap='gray')
     plt.title('Noisy', fontsize=8)
     plt.axis('off')
 
@@ -143,12 +178,14 @@ plt.show()</code></pre>
 noise_levels = [0.1, 0.3, 0.5, 0.7, 1.0]
 results = {}
 
+dae.eval()
 for nf in noise_levels:
-    x_noisy = np.clip(x_test + nf * np.random.randn(*x_test.shape), 0, 1)
-    x_denoised = dae.predict(x_noisy, verbose=0)
+    x_noisy = torch.clamp(x_test + nf * torch.randn_like(x_test), 0, 1)
+    with torch.no_grad():
+        x_denoised = dae(x_noisy).numpy()
 
     # MSE হিসাব করা (মূল ছবি vs ডিনয়েজড ছবি)
-    mse = np.mean((x_test - x_denoised) ** 2)
+    mse = np.mean((x_test.numpy() - x_denoised) ** 2)
     results[nf] = mse
     print(f"Noise Factor {nf:.1f} -> MSE: {mse:.4f}")
 
@@ -165,65 +202,115 @@ plt.show()</code></pre>
     <p>
       ছবির জন্য Convolutional স্তর ব্যবহার করলে আরও ভালো ফলাফল পাওয়া যায়, কারণ CNN স্থানিক (spatial) তথ্য সংরক্ষণ করে।
     </p>
-    <pre><code>def build_convolutional_dae():
-    inp = keras.Input(shape=(28, 28, 1))
+    <pre><code>class ConvolutionalDAE(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # এনকোডার
+        self.enc_conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+        self.pool1 = nn.MaxPool2d(2)
+        self.enc_conv2 = nn.Conv2d(32, 16, kernel_size=3, padding=1)
+        self.pool2 = nn.MaxPool2d(2)
+        # ডিকোডার
+        self.dec_deconv1 = nn.ConvTranspose2d(16, 16, kernel_size=2, stride=2)  # 7x7 -> 14x14
+        self.dec_deconv2 = nn.ConvTranspose2d(16, 32, kernel_size=2, stride=2)  # 14x14 -> 28x28
+        self.dec_conv3 = nn.Conv2d(32, 1, kernel_size=3, padding=1)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
 
-    # এনকোডার
-    x = layers.Conv2D(32, (3,3), activation='relu', padding='same')(inp)
-    x = layers.MaxPooling2D((2,2), padding='same')(x)
-    x = layers.Conv2D(16, (3,3), activation='relu', padding='same')(x)
-    encoded = layers.MaxPooling2D((2,2), padding='same')(x)
+    def forward(self, x):
+        x = self.relu(self.enc_conv1(x))
+        x = self.pool1(x)
+        x = self.relu(self.enc_conv2(x))
+        encoded = self.pool2(x)
 
-    # ডিকোডার
-    x = layers.Conv2D(16, (3,3), activation='relu', padding='same')(encoded)
-    x = layers.UpSampling2D((2,2))(x)
-    x = layers.Conv2D(32, (3,3), activation='relu', padding='same')(x)
-    x = layers.UpSampling2D((2,2))(x)
-    decoded = layers.Conv2D(1, (3,3), activation='sigmoid', padding='same')(x)
+        x = self.relu(self.dec_deconv1(encoded))
+        x = self.relu(self.dec_deconv2(x))
+        return self.sigmoid(self.dec_conv3(x))
 
-    model = keras.Model(inp, decoded, name='conv_dae')
-    return model
+# ডেটা রিশেপ (CNN-এর জন্য ৪D: batch, channel, height, width)
+x_train_4d = x_train.reshape(-1, 1, 28, 28)
+x_test_4d  = x_test.reshape(-1, 1, 28, 28)
+x_train_noisy_4d = x_train_noisy.reshape(-1, 1, 28, 28)
+x_test_noisy_4d  = x_test_noisy.reshape(-1, 1, 28, 28)
 
-# ডেটা রিশেপ (CNN-এর জন্য ৪D)
-x_train_4d = x_train.reshape(-1, 28, 28, 1)
-x_test_4d  = x_test.reshape(-1, 28, 28, 1)
-x_train_noisy_4d = x_train_noisy.reshape(-1, 28, 28, 1)
-x_test_noisy_4d  = x_test_noisy.reshape(-1, 28, 28, 1)
+cdae = ConvolutionalDAE()
+criterion_conv = nn.BCELoss()
+optimizer_conv = torch.optim.Adam(cdae.parameters(), lr=0.001)
 
-cdae = build_convolutional_dae()
-cdae.compile(optimizer='adam', loss='binary_crossentropy')
+conv_train_loader = DataLoader(TensorDataset(x_train_noisy_4d, x_train_4d), batch_size=128, shuffle=True)
+conv_test_loader  = DataLoader(TensorDataset(x_test_noisy_4d, x_test_4d),  batch_size=128)
 
-history_conv = cdae.fit(
-    x_train_noisy_4d, x_train_4d,
-    epochs=30,
-    batch_size=128,
-    validation_data=(x_test_noisy_4d, x_test_4d),
-    verbose=1
-)</code></pre>
+history_conv = {'loss': [], 'val_loss': []}
+
+for epoch in range(30):
+    cdae.train()
+    train_loss = 0.0
+    for noisy_xb, clean_xb in conv_train_loader:
+        optimizer_conv.zero_grad()
+        reconstructed = cdae(noisy_xb)
+        loss = criterion_conv(reconstructed, clean_xb)
+        loss.backward()
+        optimizer_conv.step()
+        train_loss += loss.item() * noisy_xb.size(0)
+    train_loss /= len(conv_train_loader.dataset)
+
+    cdae.eval()
+    val_loss = 0.0
+    with torch.no_grad():
+        for noisy_xb, clean_xb in conv_test_loader:
+            reconstructed = cdae(noisy_xb)
+            val_loss += criterion_conv(reconstructed, clean_xb).item() * noisy_xb.size(0)
+    val_loss /= len(conv_test_loader.dataset)
+
+    history_conv['loss'].append(train_loss)
+    history_conv['val_loss'].append(val_loss)
+    print(f"Epoch {epoch+1}: loss={train_loss:.4f}, val_loss={val_loss:.4f}")</code></pre>
 
     <h3>৮. DAE এবং সাধারণ AE-এর তুলনা</h3>
     <pre><code># সাধারণ AE তৈরি (একই আর্কিটেকচার কিন্তু পরিষ্কার ইনপুটে ট্রেন)
-def build_standard_ae(input_dim=784, encoding_dim=128):
-    inp = keras.Input(shape=(input_dim,))
-    x = layers.Dense(512, activation='relu')(inp)
-    x = layers.Dense(256, activation='relu')(x)
-    encoded = layers.Dense(encoding_dim, activation='relu')(x)
-    x = layers.Dense(256, activation='relu')(encoded)
-    x = layers.Dense(512, activation='relu')(x)
-    decoded = layers.Dense(input_dim, activation='sigmoid')(x)
-    return keras.Model(inp, decoded, name='standard_ae')
+class StandardAutoencoder(nn.Module):
+    def __init__(self, input_dim=784, encoding_dim=128):
+        super().__init__()
+        self.enc_fc1 = nn.Linear(input_dim, 512)
+        self.enc_fc2 = nn.Linear(512, 256)
+        self.enc_fc3 = nn.Linear(256, encoding_dim)
+        self.dec_fc1 = nn.Linear(encoding_dim, 256)
+        self.dec_fc2 = nn.Linear(256, 512)
+        self.dec_fc3 = nn.Linear(512, input_dim)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
 
-sae = build_standard_ae()
-sae.compile(optimizer='adam', loss='binary_crossentropy')
-sae.fit(x_train, x_train, epochs=30, batch_size=256,
-        validation_data=(x_test, x_test), verbose=0)
+    def forward(self, x):
+        x = self.relu(self.enc_fc1(x))
+        x = self.relu(self.enc_fc2(x))
+        x = self.relu(self.enc_fc3(x))
+        x = self.relu(self.dec_fc1(x))
+        x = self.relu(self.dec_fc2(x))
+        return self.sigmoid(self.dec_fc3(x))
+
+sae = StandardAutoencoder()
+criterion_sae = nn.BCELoss()
+optimizer_sae = torch.optim.Adam(sae.parameters(), lr=0.001)
+sae_train_loader = DataLoader(TensorDataset(x_train, x_train), batch_size=256, shuffle=True)
+
+for epoch in range(30):
+    sae.train()
+    for xb, _ in sae_train_loader:
+        optimizer_sae.zero_grad()
+        reconstructed = sae(xb)
+        loss = criterion_sae(reconstructed, xb)
+        loss.backward()
+        optimizer_sae.step()
 
 # নয়েজযুক্ত টেস্ট ডেটায় উভয় মডেলের MSE
-sae_denoised = sae.predict(x_test_noisy, verbose=0)
-dae_denoised = dae.predict(x_test_noisy, verbose=0)
+sae.eval()
+dae.eval()
+with torch.no_grad():
+    sae_denoised = sae(x_test_noisy).numpy()
+    dae_denoised = dae(x_test_noisy).numpy()
 
-mse_sae = np.mean((x_test - sae_denoised) ** 2)
-mse_dae = np.mean((x_test - dae_denoised) ** 2)
+mse_sae = np.mean((x_test.numpy() - sae_denoised) ** 2)
+mse_dae = np.mean((x_test.numpy() - dae_denoised) ** 2)
 
 print(f"Standard AE MSE on noisy data: {mse_sae:.4f}")
 print(f"Denoising AE MSE on noisy data: {mse_dae:.4f}")

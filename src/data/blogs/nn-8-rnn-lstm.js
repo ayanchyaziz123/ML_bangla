@@ -1,6 +1,6 @@
 export const nn_8_rnn_lstm = {
   title: "RNN ও LSTM: Sequential Data ও Time Series",
-  description: "Recurrent Neural Network-এর hidden state, vanishing gradient সমস্যা, LSTM-এর cell state ও gate mechanism এবং Keras দিয়ে time series prediction বাংলায়।",
+  description: "Recurrent Neural Network-এর hidden state, vanishing gradient সমস্যা, LSTM-এর cell state ও gate mechanism এবং PyTorch দিয়ে time series prediction বাংলায়।",
   date: "২৩ মে, ২০২৬",
   category: "নিউরাল নেটওয়ার্ক",
   readTime: 13,
@@ -65,14 +65,15 @@ export const nn_8_rnn_lstm = {
       </tbody>
     </table>
 
-    <h3>৪. Keras দিয়ে Time Series Prediction</h3>
-    <pre><code">import numpy as np
+    <h3>৪. PyTorch দিয়ে Time Series Prediction</h3>
+    <pre><code>import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
-from tensorflow import keras
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
 
 # Synthetic sine wave time series তৈরি
-t     = np.linspace(0, 100, 1000)
+t      = np.linspace(0, 100, 1000)
 series = np.sin(0.1 * t) + 0.1 * np.random.randn(1000)
 
 # Sliding window দিয়ে sequences তৈরি
@@ -85,7 +86,8 @@ def create_sequences(data, seq_len=20):
 
 seq_len = 20
 X, y = create_sequences(series, seq_len)
-X    = X.reshape(X.shape[0], X.shape[1], 1)  # (samples, timesteps, features)
+X = torch.tensor(X, dtype=torch.float32).unsqueeze(-1)   # (samples, timesteps, features)
+y = torch.tensor(y, dtype=torch.float32).unsqueeze(-1)
 
 split = int(len(X) * 0.8)
 X_train, X_test = X[:split], X[split:]
@@ -93,36 +95,68 @@ y_train, y_test = y[:split], y[split:]
 
 print(f"X_train: {X_train.shape},  y_train: {y_train.shape}")
 
-# LSTM মডেল
-model = keras.Sequential([
-    keras.layers.LSTM(64, return_sequences=True, input_shape=(seq_len, 1)),
-    keras.layers.LSTM(32),
-    keras.layers.Dense(16, activation='relu'),
-    keras.layers.Dense(1),
-])
-model.compile(optimizer='adam', loss='mse')
-model.summary()
+# LSTM মডেল — explicit nn.Module class
+class LSTMForecaster(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.lstm1 = nn.LSTM(input_size=1, hidden_size=64, batch_first=True)
+        self.lstm2 = nn.LSTM(input_size=64, hidden_size=32, batch_first=True)
+        self.fc1 = nn.Linear(32, 16)
+        self.fc2 = nn.Linear(16, 1)
+        self.relu = nn.ReLU()
 
-history = model.fit(
-    X_train, y_train,
-    epochs=30, batch_size=32,
-    validation_split=0.2,
-    callbacks=[keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True)],
-    verbose=1,
-)
+    def forward(self, x):
+        x, _ = self.lstm1(x)           # পুরো sequence পরের LSTM-এ পাঠানো হয় (return_sequences=True-এর মতো)
+        _, (h_n, _) = self.lstm2(x)    # এখন শুধু শেষ hidden state দরকার
+        x = self.relu(self.fc1(h_n[-1]))
+        return self.fc2(x)
+
+model = LSTMForecaster()
+print(model)
+
+criterion = nn.MSELoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
+
+n_val = int(len(X_train) * 0.2)
+X_val, y_val = X_train[-n_val:], y_train[-n_val:]
+best_val_loss, patience, patience_counter = float('inf'), 5, 0
+
+for epoch in range(30):
+    model.train()
+    for xb, yb in train_loader:
+        optimizer.zero_grad()
+        loss = criterion(model(xb), yb)
+        loss.backward()
+        optimizer.step()
+
+    model.eval()
+    with torch.no_grad():
+        val_loss = criterion(model(X_val), y_val).item()
+    if val_loss &lt; best_val_loss:
+        best_val_loss, patience_counter = val_loss, 0
+        best_state = model.state_dict()
+    else:
+        patience_counter += 1
+        if patience_counter >= patience:    # EarlyStopping(patience=5)
+            break
+
+model.load_state_dict(best_state)           # restore_best_weights=True
 
 # Prediction
-y_pred = model.predict(X_test).flatten()
-mse    = np.mean((y_test - y_pred)**2)
+model.eval()
+with torch.no_grad():
+    y_pred = model(X_test).squeeze(-1).numpy()
+mse = np.mean((y_test.numpy().flatten() - y_pred)**2)
 print(f"Test MSE: {mse:.4f}")
 
 plt.figure(figsize=(12, 4))
-plt.plot(y_test[:100], label='Actual')
+plt.plot(y_test.numpy().flatten()[:100], label='Actual')
 plt.plot(y_pred[:100], label='Predicted', ls='--')
 plt.title('LSTM Time Series Prediction'); plt.legend(); plt.show()</code></pre>
 
     <h3>৫. GRU — Simplified LSTM</h3>
-    <pre><code">from tensorflow import keras
+    <pre><code>import torch.nn as nn
 
 # GRU: LSTM-এর মতোই কিন্তু ২টি gate (reset + update) → দ্রুত, প্রায় সমান কার্যকর
 
@@ -134,54 +168,110 @@ plt.title('LSTM Time Series Prediction'); plt.legend(); plt.show()</code></pre>
 # h̃_t = tanh(W * [r_t * h_{t-1}, x_t])
 # h_t = (1-z_t)*h_{t-1} + z_t*h̃_t
 
-gru_model = keras.Sequential([
-    keras.layers.GRU(64, return_sequences=True, input_shape=(seq_len, 1)),
-    keras.layers.GRU(32),
-    keras.layers.Dense(1),
-])
-gru_model.compile(optimizer='adam', loss='mse')
+class GRUForecaster(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.gru1 = nn.GRU(input_size=1, hidden_size=64, batch_first=True)
+        self.gru2 = nn.GRU(input_size=64, hidden_size=32, batch_first=True)
+        self.fc = nn.Linear(32, 1)
+
+    def forward(self, x):
+        x, _ = self.gru1(x)
+        _, h_n = self.gru2(x)
+        return self.fc(h_n[-1])
+
+gru_model = GRUForecaster()
 
 # Simple RNN
-rnn_model = keras.Sequential([
-    keras.layers.SimpleRNN(64, return_sequences=True, input_shape=(seq_len, 1)),
-    keras.layers.SimpleRNN(32),
-    keras.layers.Dense(1),
-])
-rnn_model.compile(optimizer='adam', loss='mse')
+class SimpleRNNForecaster(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.rnn1 = nn.RNN(input_size=1, hidden_size=64, batch_first=True)
+        self.rnn2 = nn.RNN(input_size=64, hidden_size=32, batch_first=True)
+        self.fc = nn.Linear(32, 1)
 
-print("LSTM params:", model.count_params())
-print("GRU params: ", gru_model.count_params())
-print("RNN params: ", rnn_model.count_params())</code></pre>
+    def forward(self, x):
+        x, _ = self.rnn1(x)
+        _, h_n = self.rnn2(x)
+        return self.fc(h_n[-1])
+
+rnn_model = SimpleRNNForecaster()
+
+def count_params(m):
+    return sum(p.numel() for p in m.parameters())
+
+print("LSTM params:", count_params(model))
+print("GRU params: ", count_params(gru_model))
+print("RNN params: ", count_params(rnn_model))</code></pre>
 
     <h3>৬. Sentiment Analysis — Text Classification</h3>
-    <pre><code">from tensorflow import keras
-import numpy as np
+    <pre><code>import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from torchtext.datasets import IMDB
+from torchtext.data.utils import get_tokenizer
+from torchtext.vocab import build_vocab_from_iterator
 
-# IMDB movie review sentiment (built-in dataset)
-max_words = 10000
-max_len   = 200
+# IMDB movie review sentiment
+tokenizer = get_tokenizer('basic_english')
+max_len, vocab_size = 200, 10000
 
-(X_train, y_train), (X_test, y_test) = keras.datasets.imdb.load_data(num_words=max_words)
-X_train = keras.preprocessing.sequence.pad_sequences(X_train, maxlen=max_len)
-X_test  = keras.preprocessing.sequence.pad_sequences(X_test,  maxlen=max_len)
+def yield_tokens(data_iter):
+    for label, text in data_iter:
+        yield tokenizer(text)
 
-model_text = keras.Sequential([
-    keras.layers.Embedding(max_words, 64, input_length=max_len),  # word → vector
-    keras.layers.LSTM(64, dropout=0.2),
-    keras.layers.Dense(32, activation='relu'),
-    keras.layers.Dropout(0.3),
-    keras.layers.Dense(1, activation='sigmoid'),
-])
-model_text.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+vocab = build_vocab_from_iterator(yield_tokens(IMDB(split='train')),
+                                   max_tokens=vocab_size, specials=['&lt;pad&gt;', '&lt;unk&gt;'])
+vocab.set_default_index(vocab['&lt;unk&gt;'])
 
-history = model_text.fit(
-    X_train, y_train,
-    epochs=5, batch_size=128,
-    validation_split=0.2,
-    verbose=1,
-)
-loss, acc = model_text.evaluate(X_test, y_test, verbose=0)
-print(f"Test Accuracy: {acc:.4f}")</code></pre>
+def encode(text):
+    ids = vocab(tokenizer(text))[:max_len]
+    return ids + [vocab['&lt;pad&gt;']] * (max_len - len(ids))    # pad_sequences-এর মতো
+
+def collate_batch(batch):
+    labels = torch.tensor([1.0 if label == 'pos' else 0.0 for label, _ in batch]).unsqueeze(1)
+    texts  = torch.tensor([encode(text) for _, text in batch])
+    return texts, labels
+
+train_loader = DataLoader(list(IMDB(split='train')), batch_size=128, shuffle=True,  collate_fn=collate_batch)
+test_loader  = DataLoader(list(IMDB(split='test')),  batch_size=128, shuffle=False, collate_fn=collate_batch)
+
+class SentimentLSTM(nn.Module):
+    def __init__(self, vocab_size, embed_dim=64, hidden_dim=64):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)   # word → vector
+        self.lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True, dropout=0.2)
+        self.fc1 = nn.Linear(hidden_dim, 32)
+        self.dropout = nn.Dropout(0.3)
+        self.fc2 = nn.Linear(32, 1)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.embedding(x)
+        _, (h_n, _) = self.lstm(x)
+        x = self.dropout(self.relu(self.fc1(h_n[-1])))
+        return self.fc2(x)          # raw logit — BCEWithLogitsLoss নিজেই sigmoid করে
+
+model_text = SentimentLSTM(vocab_size=len(vocab))
+criterion = nn.BCEWithLogitsLoss()
+optimizer = torch.optim.Adam(model_text.parameters(), lr=0.001)
+
+for epoch in range(5):
+    model_text.train()
+    for xb, yb in train_loader:
+        optimizer.zero_grad()
+        loss = criterion(model_text(xb), yb)
+        loss.backward()
+        optimizer.step()
+
+model_text.eval()
+correct, total = 0, 0
+with torch.no_grad():
+    for xb, yb in test_loader:
+        preds = (torch.sigmoid(model_text(xb)) >= 0.5).float()
+        correct += (preds == yb).sum().item()
+        total += yb.size(0)
+print(f"Test Accuracy: {correct/total:.4f}")</code></pre>
 
     <h3>সারসংক্ষেপ</h3>
     <table>
@@ -191,7 +281,7 @@ print(f"Test Accuracy: {acc:.4f}")</code></pre>
         <tr><td>Vanishing Gradient</td><td>দীর্ঘ sequence-এ RNN ব্যর্থ — LSTM/GRU দিয়ে সমাধান</td></tr>
         <tr><td>LSTM</td><td>Cell state + 3 gates — long-term dependency শেখার জন্য সেরা</td></tr>
         <tr><td>GRU</td><td>2 gates — LSTM-এর simplified version, দ্রুত, প্রায় সমান কার্যকর</td></tr>
-        <tr><td>return_sequences=True</td><td>Stacked LSTM-এ প্রথম layer-এ ব্যবহার করো</td></tr>
+        <tr><td>Stacking nn.LSTM layers</td><td>এক LSTM-এর পুরো sequence output পরের LSTM-এ পাঠাও — return_sequences flag লাগে না</td></tr>
         <tr><td>Embedding layer</td><td>Text classification-এ word → dense vector mapping</td></tr>
       </tbody>
     </table>

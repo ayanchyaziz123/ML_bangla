@@ -37,6 +37,8 @@ const categoryColors = {
   'Recommender Systems':             { badge: 'bg-cyan-100 text-cyan-800 border-cyan-300',     btn: 'bg-cyan-700 text-white border-cyan-700',     btnOff: 'bg-cyan-100 text-cyan-800 border-cyan-300 hover:bg-cyan-200' },
   'Statistics for ML':               { badge: 'bg-emerald-100 text-emerald-800 border-emerald-300', btn: 'bg-emerald-700 text-white border-emerald-700', btnOff: 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' },
   'ML Interview Questions':          { badge: 'bg-gray-900 text-white border-gray-700',        btn: 'bg-gray-900 text-white border-gray-900',     btnOff: 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200' },
+  'Python Interview Questions':      { badge: 'bg-blue-900 text-white border-blue-800',        btn: 'bg-blue-900 text-white border-blue-900',     btnOff: 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200' },
+  'SQL Interview Questions':         { badge: 'bg-teal-900 text-white border-teal-800',        btn: 'bg-teal-900 text-white border-teal-900',     btnOff: 'bg-teal-100 text-teal-800 border-teal-300 hover:bg-teal-200' },
 };
 
 const fallbackColors = {

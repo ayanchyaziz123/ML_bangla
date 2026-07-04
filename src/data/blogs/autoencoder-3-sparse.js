@@ -54,50 +54,82 @@ export const autoencoder_3_sparse = {
       যদি ρ̂ⱼ = ρ হয়, তাহলে KL = ০। যদি ρ̂ⱼ ρ থেকে বিচ্যুত হয়, পেনাল্টি বাড়ে। এটি প্রতিটি নিউরনকে লক্ষ্য অ্যাক্টিভেশনের দিকে ঠেলে দেয়।
     </p>
 
-    <h3>৪. Keras দিয়ে L1 স্পার্স অটোএনকোডার</h3>
+    <h3>৪. PyTorch দিয়ে L1 স্পার্স অটোএনকোডার</h3>
     <pre><code>import numpy as np
 import matplotlib.pyplot as plt
-from tensorflow import keras
-from tensorflow.keras import layers, regularizers
-from tensorflow.keras.datasets import mnist
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+from torchvision import datasets, transforms
 
 # ডেটা প্রস্তুত
-(x_train, _), (x_test, _) = mnist.load_data()
-x_train = x_train.astype('float32').reshape(-1, 784) / 255.0
-x_test  = x_test.astype('float32').reshape(-1, 784)  / 255.0
+transform = transforms.ToTensor()
+train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+test_dataset  = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+x_train = train_dataset.data.reshape(-1, 784).float() / 255.0
+x_test  = test_dataset.data.reshape(-1, 784).float()  / 255.0
 
 # L1 রেগুলারাইজেশন সহ স্পার্স অটোএনকোডার
 # encoding_dim > input_dim হতে পারে (overcomplete)
 encoding_dim = 1024  # ইনপুট ৭৮৪ এর চেয়ে বড়!
+l1_lambda = 1e-5  # λ = 0.00001
 
-inp = keras.Input(shape=(784,))
-# activity_regularizer সরাসরি অ্যাক্টিভেশনে পেনাল্টি দেয়
-encoded = layers.Dense(
-    encoding_dim,
-    activation='relu',
-    activity_regularizer=regularizers.l1(1e-5)  # λ = 0.00001
-)(inp)
+class SparseAutoencoderL1(nn.Module):
+    def __init__(self, encoding_dim=1024):
+        super().__init__()
+        self.fc_enc = nn.Linear(784, encoding_dim)
+        self.fc_dec = nn.Linear(encoding_dim, 784)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
 
-decoded = layers.Dense(784, activation='sigmoid')(encoded)
+    def forward(self, x):
+        # activity_regularizer-এর সমতুল্য পেনাল্টি ট্রেনিং লুপে যোগ করা হবে
+        encoded = self.relu(self.fc_enc(x))
+        decoded = self.sigmoid(self.fc_dec(encoded))
+        return decoded, encoded
 
-sparse_ae_l1 = keras.Model(inp, decoded, name='sparse_ae_l1')
-sparse_ae_l1.compile(optimizer='adam', loss='binary_crossentropy')
-sparse_ae_l1.summary()</code></pre>
+sparse_ae_l1 = SparseAutoencoderL1(encoding_dim)
+criterion = nn.BCELoss()
+optimizer_l1 = torch.optim.Adam(sparse_ae_l1.parameters(), lr=0.001)
+print(sparse_ae_l1)</code></pre>
 
     <pre><code># ট্রেনিং
-history_l1 = sparse_ae_l1.fit(
-    x_train, x_train,
-    epochs=40,
-    batch_size=256,
-    shuffle=True,
-    validation_data=(x_test, x_test),
-    verbose=1
-)</code></pre>
+train_loader = DataLoader(TensorDataset(x_train, x_train), batch_size=256, shuffle=True)
+test_loader  = DataLoader(TensorDataset(x_test, x_test),  batch_size=256)
+
+history_l1 = {'loss': [], 'val_loss': []}
+
+for epoch in range(40):
+    sparse_ae_l1.train()
+    train_loss = 0.0
+    for xb, _ in train_loader:
+        optimizer_l1.zero_grad()
+        reconstructed, encoded = sparse_ae_l1(xb)
+        recon_loss = criterion(reconstructed, xb)
+        # activity_regularizer-এর সমতুল্য: অ্যাক্টিভেশনে সরাসরি L1 পেনাল্টি
+        l1_penalty = l1_lambda * torch.sum(torch.abs(encoded))
+        loss = recon_loss + l1_penalty
+        loss.backward()
+        optimizer_l1.step()
+        train_loss += recon_loss.item() * xb.size(0)
+    train_loss /= len(train_loader.dataset)
+
+    sparse_ae_l1.eval()
+    val_loss = 0.0
+    with torch.no_grad():
+        for xb, _ in test_loader:
+            reconstructed, _ = sparse_ae_l1(xb)
+            val_loss += criterion(reconstructed, xb).item() * xb.size(0)
+    val_loss /= len(test_loader.dataset)
+
+    history_l1['loss'].append(train_loss)
+    history_l1['val_loss'].append(val_loss)
+    print(f"Epoch {epoch+1}: loss={train_loss:.4f}, val_loss={val_loss:.4f}")</code></pre>
 
     <h3>৫. KL Divergence স্পার্সিটি কাস্টম লেয়ার</h3>
-    <pre><code">import tensorflow as tf
+    <pre><code>import torch
 
-class KLSparsityRegularizer(keras.regularizers.Regularizer):
+class KLSparsityRegularizer:
     """KL Divergence ভিত্তিক স্পার্সিটি রেগুলারাইজার"""
 
     def __init__(self, rho=0.05, beta=3.0):
@@ -106,47 +138,71 @@ class KLSparsityRegularizer(keras.regularizers.Regularizer):
 
     def __call__(self, activations):
         # ব্যাচে গড় অ্যাক্টিভেশন
-        rho_hat = tf.reduce_mean(activations, axis=0)
-        rho_hat = tf.clip_by_value(rho_hat, 1e-7, 1.0 - 1e-7)
+        rho_hat = torch.mean(activations, dim=0)
+        rho_hat = torch.clamp(rho_hat, 1e-7, 1.0 - 1e-7)
 
         rho = self.rho
         # KL(rho || rho_hat)
-        kl = rho * tf.math.log(rho / rho_hat) + \
-             (1 - rho) * tf.math.log((1 - rho) / (1 - rho_hat))
-        return self.beta * tf.reduce_sum(kl)
-
-    def get_config(self):
-        return {'rho': self.rho, 'beta': self.beta}</code></pre>
+        kl = rho * torch.log(rho / rho_hat) + \
+             (1 - rho) * torch.log((1 - rho) / (1 - rho_hat))
+        return self.beta * torch.sum(kl)</code></pre>
 
     <pre><code># KL স্পার্স অটোএনকোডার তৈরি
-inp = keras.Input(shape=(784,))
-encoded = layers.Dense(
-    512,
-    activation='sigmoid',  # sigmoid যাতে অ্যাক্টিভেশন ০-১ এর মধ্যে থাকে
-    activity_regularizer=KLSparsityRegularizer(rho=0.05, beta=3.0)
-)(inp)
-decoded = layers.Dense(784, activation='sigmoid')(encoded)
+class SparseAutoencoderKL(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc_enc = nn.Linear(784, 512)
+        self.fc_dec = nn.Linear(512, 784)
+        self.sigmoid = nn.Sigmoid()   # sigmoid যাতে অ্যাক্টিভেশন ০-১ এর মধ্যে থাকে
 
-sparse_ae_kl = keras.Model(inp, decoded, name='sparse_ae_kl')
-sparse_ae_kl.compile(optimizer='adam', loss='binary_crossentropy')
+    def forward(self, x):
+        encoded = self.sigmoid(self.fc_enc(x))
+        decoded = self.sigmoid(self.fc_dec(encoded))
+        return decoded, encoded
 
-history_kl = sparse_ae_kl.fit(
-    x_train, x_train,
-    epochs=40,
-    batch_size=256,
-    validation_data=(x_test, x_test),
-    verbose=1
-)</code></pre>
+sparse_ae_kl = SparseAutoencoderKL()
+criterion_kl = nn.BCELoss()
+optimizer_kl = torch.optim.Adam(sparse_ae_kl.parameters(), lr=0.001)
+kl_regularizer = KLSparsityRegularizer(rho=0.05, beta=3.0)
+
+history_kl = {'loss': [], 'val_loss': []}
+
+for epoch in range(40):
+    sparse_ae_kl.train()
+    train_loss = 0.0
+    for xb, _ in train_loader:
+        optimizer_kl.zero_grad()
+        reconstructed, encoded = sparse_ae_kl(xb)
+        recon_loss = criterion_kl(reconstructed, xb)
+        sparsity_loss = kl_regularizer(encoded)
+        loss = recon_loss + sparsity_loss
+        loss.backward()
+        optimizer_kl.step()
+        train_loss += recon_loss.item() * xb.size(0)
+    train_loss /= len(train_loader.dataset)
+
+    sparse_ae_kl.eval()
+    val_loss = 0.0
+    with torch.no_grad():
+        for xb, _ in test_loader:
+            reconstructed, _ = sparse_ae_kl(xb)
+            val_loss += criterion_kl(reconstructed, xb).item() * xb.size(0)
+    val_loss /= len(test_loader.dataset)
+
+    history_kl['loss'].append(train_loss)
+    history_kl['val_loss'].append(val_loss)
+    print(f"Epoch {epoch+1}: loss={train_loss:.4f}, val_loss={val_loss:.4f}")</code></pre>
 
     <h3>৬. স্পার্সিটি পরিমাপ করা</h3>
-    <pre><code">def measure_sparsity(model, data, threshold=0.1):
+    <pre><code>def measure_sparsity(model, data, threshold=0.1):
     """নেটওয়ার্কের স্পার্সিটি পরিমাপ"""
-    # এনকোডার লেয়ার পর্যন্ত মডেল তৈরি
-    encoder = keras.Model(model.input, model.layers[-2].output)
-    activations = encoder.predict(data, verbose=0)
+    model.eval()
+    with torch.no_grad():
+        _, activations = model(data)
+    activations = activations.numpy()
 
     # threshold এর নিচের মান = নিষ্ক্রিয় নিউরন
-    inactive = np.mean(activations < threshold)
+    inactive = np.mean(activations &lt; threshold)
     mean_activation = np.mean(activations)
 
     return {
@@ -156,12 +212,31 @@ history_kl = sparse_ae_kl.fit(
     }
 
 # সাধারণ AE তৈরি (তুলনার জন্য)
-inp = keras.Input(shape=(784,))
-enc = layers.Dense(512, activation='relu')(inp)
-dec = layers.Dense(784, activation='sigmoid')(enc)
-standard_ae = keras.Model(inp, dec, name='standard_ae')
-standard_ae.compile(optimizer='adam', loss='binary_crossentropy')
-standard_ae.fit(x_train, x_train, epochs=30, batch_size=256, verbose=0)
+class StandardAutoencoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc_enc = nn.Linear(784, 512)
+        self.fc_dec = nn.Linear(512, 784)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        encoded = self.relu(self.fc_enc(x))
+        decoded = self.sigmoid(self.fc_dec(encoded))
+        return decoded, encoded
+
+standard_ae = StandardAutoencoder()
+criterion_std = nn.BCELoss()
+optimizer_std = torch.optim.Adam(standard_ae.parameters(), lr=0.001)
+
+for epoch in range(30):
+    standard_ae.train()
+    for xb, _ in train_loader:
+        optimizer_std.zero_grad()
+        reconstructed, _ = standard_ae(xb)
+        loss = criterion_std(reconstructed, xb)
+        loss.backward()
+        optimizer_std.step()
 
 # তুলনা
 stats_standard = measure_sparsity(standard_ae, x_test)
@@ -184,35 +259,29 @@ print(f"  Mean Activation:    {stats_kl['mean_activation']:.4f}")
 print(f"  Active Neurons/Sample: {stats_kl['active_neurons_per_sample']:.1f}")</code></pre>
 
     <h3>৭. লার্নড ফিচার ভিজুয়ালাইজেশন</h3>
-    <pre><code">def visualize_filters(model, layer_name, n_filters=64):
+    <pre><code>def visualize_filters(model, model_name, n_filters=64):
     """এনকোডার ওয়েট ভিজুয়ালাইজ করা"""
-    # প্রথম এনকোডার লেয়ারের ওয়েট নিন
-    weights = model.get_layer(layer_name).get_weights()[0]
-    # weights আকার: (784, n_neurons)
+    # প্রথম এনকোডার লেয়ারের ওয়েট নিন (PyTorch Linear weight আকার: out_features x in_features)
+    weights = model.fc_enc.weight.detach().numpy().T
+    # ট্রান্সপোজের পর weights আকার: (784, n_neurons)
 
     n = min(n_filters, weights.shape[1])
     fig, axes = plt.subplots(8, 8, figsize=(12, 12))
 
     for i, ax in enumerate(axes.flat):
-        if i < n:
+        if i &lt; n:
             filter_img = weights[:, i].reshape(28, 28)
             ax.imshow(filter_img, cmap='RdBu_r',
                       vmin=-abs(filter_img).max(),
                       vmax=abs(filter_img).max())
         ax.axis('off')
 
-    plt.suptitle(f'Learned Features — {model.name}', fontsize=16)
+    plt.suptitle(f'Learned Features — {model_name}', fontsize=16)
     plt.tight_layout()
-    plt.savefig(f'features_{model.name}.png', dpi=150)
+    plt.savefig(f'features_{model_name}.png', dpi=150)
     plt.show()
 
-# প্রথম Dense লেয়ারের নাম বের করা
-for layer in sparse_ae_l1.layers:
-    if 'dense' in layer.name:
-        first_dense = layer.name
-        break
-
-visualize_filters(sparse_ae_l1, first_dense)</code></pre>
+visualize_filters(sparse_ae_l1, 'sparse_ae_l1')</code></pre>
 
     <h3>৮. Overcomplete স্পার্স অটোএনকোডার</h3>
     <p>
@@ -237,25 +306,31 @@ visualize_filters(sparse_ae_l1, first_dense)</code></pre>
     </p>
 
     <h3>১০. Lambda পছন্দ করা</h3>
-    <pre><code">lambdas = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
+    <pre><code>lambdas = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
 sparsity_results = {}
 
 for lam in lambdas:
-    inp = keras.Input(shape=(784,))
-    enc = layers.Dense(256, activation='relu',
-                       activity_regularizer=regularizers.l1(lam))(inp)
-    dec = layers.Dense(784, activation='sigmoid')(enc)
-    model = keras.Model(inp, dec)
-    model.compile(optimizer='adam', loss='binary_crossentropy')
-    model.fit(x_train, x_train, epochs=15, batch_size=256,
-              validation_data=(x_test, x_test), verbose=0)
+    model = SparseAutoencoderL1(256)
+    opt = torch.optim.Adam(model.parameters(), lr=0.001)
+    crit = nn.BCELoss()
 
-    # রিকনস্ট্রাকশন লস
-    val_loss = model.evaluate(x_test, x_test, verbose=0)
-    # স্পার্সিটি
-    enc_model = keras.Model(model.input, model.layers[1].output)
-    acts = enc_model.predict(x_test, verbose=0)
-    sparsity = np.mean(acts < 0.1)
+    for epoch in range(15):
+        model.train()
+        for xb, _ in train_loader:
+            opt.zero_grad()
+            reconstructed, encoded = model(xb)
+            recon_loss = crit(reconstructed, xb)
+            l1_penalty = lam * torch.sum(torch.abs(encoded))
+            loss = recon_loss + l1_penalty
+            loss.backward()
+            opt.step()
+
+    # রিকনস্ট্রাকশন লস ও স্পার্সিটি
+    model.eval()
+    with torch.no_grad():
+        reconstructed, acts = model(x_test)
+        val_loss = crit(reconstructed, x_test).item()
+    sparsity = (acts &lt; 0.1).float().mean().item()
     sparsity_results[lam] = {'loss': val_loss, 'sparsity': sparsity}
     print(f"lambda={lam:.0e}: val_loss={val_loss:.4f}, sparsity={sparsity:.2%}")
 

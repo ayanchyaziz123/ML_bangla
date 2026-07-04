@@ -1,62 +1,62 @@
 export const nn_4_keras = {
-  title: "Keras ও TensorFlow দিয়ে নিউরাল নেটওয়ার্ক",
-  description: "TensorFlow/Keras-এর Sequential API দিয়ে neural network তৈরি, MNIST handwritten digit classification, training callbacks এবং model save/load সম্পূর্ণ গাইড।",
+  title: "PyTorch দিয়ে নিউরাল নেটওয়ার্ক",
+  description: "PyTorch দিয়ে neural network তৈরি (nn.Module, manual training loop), MNIST handwritten digit classification এবং model save/load সম্পূর্ণ গাইড।",
   date: "২৩ মে, ২০২৬",
   category: "নিউরাল নেটওয়ার্ক",
   readTime: 12,
   slug: "nn-keras-tensorflow",
   content: `
-    <h3>১. Keras কেন? NumPy থেকে Keras-এ যাওয়া</h3>
-    <p>আগের ব্লগে আমরা NumPy দিয়ে neural network implement করেছিলাম — ৩০০+ লাইন কোড। Keras দিয়ে একই কাজ ১০-১৫ লাইনে করা যায়।</p>
-    <p>Keras-এর সুবিধা:</p>
+    <h3>১. PyTorch কেন? NumPy থেকে PyTorch-এ যাওয়া</h3>
+    <p>আগের ব্লগে আমরা NumPy দিয়ে neural network implement করেছিলাম — ৩০০+ লাইন কোড। PyTorch দিয়ে একই কাজ অনেক কম লাইনে করা যায়, অথচ training loop-এর উপর সম্পূর্ণ নিয়ন্ত্রণ থাকে।</p>
+    <p>PyTorch-এর সুবিধা:</p>
     <ul>
-      <li>GPU/TPU support: automatic</li>
-      <li>Automatic differentiation: backprop নিজেই করে</li>
-      <li>Built-in optimizers, losses, metrics</li>
-      <li>Callbacks: EarlyStopping, ModelCheckpoint</li>
-      <li>TensorBoard integration</li>
+      <li>GPU support: <code>.to(device)</code> দিয়ে automatic</li>
+      <li>Automatic differentiation (autograd): backprop নিজেই করে</li>
+      <li>Built-in optimizers ও losses</li>
+      <li>Training loop plain Python — পড়া ও debug করা সহজ</li>
     </ul>
-    <pre><code>import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers, callbacks
+    <pre><code>import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
 import numpy as np
 import matplotlib.pyplot as plt
 
-# TensorFlow version check
-print("TensorFlow version:", tf.__version__)
-print("GPU available:", len(tf.config.list_physical_devices('GPU')) > 0)
+# PyTorch version check
+print("PyTorch version:", torch.__version__)
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print("Device:", device)
 
 # Reproducibility
-tf.random.set_seed(42)
+torch.manual_seed(42)
 np.random.seed(42)
 </code></pre>
 
     <h3>২. MNIST Dataset: Handwritten Digits</h3>
     <p>MNIST হলো ML-এর "Hello World" — ৭০,০০০ handwritten digit image (0-9)। প্রতিটি image 28×28 grayscale pixel।</p>
-    <pre><code># MNIST load
-(X_train, y_train), (X_test, y_test) = keras.datasets.mnist.load_data()
+    <pre><code># MNIST load — torchvision নিজেই download করে, ToTensor 0-255 কে 0-1-এ normalize করে
+transform = transforms.Compose([transforms.ToTensor()])
 
-print("Training:", X_train.shape, y_train.shape)  # (60000, 28, 28) (60000,)
-print("Test:", X_test.shape, y_test.shape)          # (10000, 28, 28) (10000,)
-print("Pixel range:", X_train.min(), X_train.max()) # 0, 255
+train_dataset = datasets.MNIST(root='./data', train=True,  download=True, transform=transform)
+test_dataset  = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
 
-# Preprocessing
-# 1. Normalize: 0-255 -> 0-1
-X_train = X_train.astype('float32') / 255.0
-X_test  = X_test.astype('float32') / 255.0
+print("Training:", len(train_dataset))  # 60000
+print("Test:", len(test_dataset))       # 10000
 
-# 2. Flatten: 28x28 -> 784 (for Dense/MLP)
-X_train_flat = X_train.reshape(-1, 784)  # (60000, 784)
-X_test_flat  = X_test.reshape(-1, 784)   # (10000, 784)
+train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+test_loader  = DataLoader(test_dataset,  batch_size=128, shuffle=False)
 
-# 3. Labels: integer (0-9) — sparse_categorical_crossentropy ব্যবহার করব
-print("Label sample:", y_train[:10])  # [5 0 4 1 9 2 1 3 1 4]
+images, labels = next(iter(train_loader))
+print("Batch shape:", images.shape)      # (128, 1, 28, 28)
+print("Label sample:", labels[:10].tolist())
 
-# Visualize sample images
+# Sample images visualize
 fig, axes = plt.subplots(2, 5, figsize=(12, 5))
 for i, ax in enumerate(axes.flat):
-    ax.imshow(X_train[i], cmap='gray')
-    ax.set_title(f"Label: {y_train[i]}")
+    img, label = train_dataset[i]
+    ax.imshow(img.squeeze(), cmap='gray')
+    ax.set_title(f"Label: {label}")
     ax.axis('off')
 plt.suptitle("MNIST Sample Images")
 plt.tight_layout()
@@ -64,70 +64,100 @@ plt.savefig("mnist_samples.png")
 plt.show()
 </code></pre>
 
-    <h3>৩. Sequential Model তৈরি</h3>
-    <p>Keras Sequential model-এ layer গুলো একটির পর একটি stack হয়।</p>
+    <h3>৩. nn.Module দিয়ে Model তৈরি</h3>
+    <p>PyTorch-এ model একটি Python class — layer গুলো <code>__init__</code>-এ declare করা হয় আর forward computation <code>forward()</code>-এ explicitly লেখা হয়।</p>
     <pre><code># Model 1: Simple MLP
-model = keras.Sequential([
-    layers.Input(shape=(784,)),
-    layers.Dense(128, activation='relu'),
-    layers.Dense(64, activation='relu'),
-    layers.Dense(10, activation='softmax')  # 10 classes
-], name="simple_mlp")
+class SimpleMLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(784, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 10)    # 10 classes
+        self.relu = nn.ReLU()
 
-# Model summary
-model.summary()
-# Output:
-# Layer (type)         Output Shape         Param #
-# dense (Dense)        (None, 128)          100480
-# dense_1 (Dense)      (None, 64)           8256
-# dense_2 (Dense)      (None, 10)           650
-# Total params: 109,386
+    def forward(self, x):
+        x = self.flatten(x)
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
+        return self.fc3(x)              # raw logits — softmax loss-এর ভিতরেই আছে
 
-# Compile: optimizer, loss, metrics নির্ধারণ
-model.compile(
-    optimizer='adam',
-    loss='sparse_categorical_crossentropy',  # integer labels
-    metrics=['accuracy']
-)
-# Note: one-hot labels হলে 'categorical_crossentropy' ব্যবহার করতে হবে
+model = SimpleMLP().to(device)
+print(model)
+
+total_params = sum(p.numel() for p in model.parameters())
+print("Total params:", total_params)    # 109,386
+# fc1: 784*128 + 128 = 100480
+# fc2: 128*64 + 64   = 8256
+# fc3: 64*10 + 10    = 650
+
+# criterion ও optimizer আলাদাভাবে define — compile()-এর বদলে
+criterion = nn.CrossEntropyLoss()       # softmax + NLL একসাথে, integer label সরাসরি নেয়
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+# Note: one-hot label লাগবে না — CrossEntropyLoss সরাসরি integer label নেয়
 </code></pre>
 
-    <h3>৪. Training: fit(), evaluate(), predict()</h3>
-    <pre><code"># Callbacks define
-early_stop = callbacks.EarlyStopping(
-    monitor='val_loss',
-    patience=5,
-    restore_best_weights=True,
-    verbose=1
-)
+    <h3>৪. Training: Manual Training Loop</h3>
+    <p>PyTorch-এ <code>.fit()</code> নেই — নিজেই loop লিখতে হয়: forward pass, loss হিসাব, backward pass, weight update।</p>
+    <pre><code>def evaluate(model, loader):
+    model.eval()
+    total, correct, total_loss = 0, 0, 0.0
+    with torch.no_grad():
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            out = model(xb)
+            loss = criterion(out, yb)
+            total_loss += loss.item() * xb.size(0)
+            correct += (out.argmax(1) == yb).sum().item()
+            total += xb.size(0)
+    return total_loss / total, correct / total
 
-model_checkpoint = callbacks.ModelCheckpoint(
-    'best_mnist_model.keras',
-    monitor='val_accuracy',
-    save_best_only=True,
-    verbose=0
-)
+best_val_loss = float('inf')
+patience, patience_counter = 5, 0
+history = {'train_acc': [], 'val_acc': [], 'train_loss': [], 'val_loss': []}
 
-# Training
-history = model.fit(
-    X_train_flat, y_train,
-    epochs=30,
-    batch_size=128,
-    validation_split=0.1,  # 10% of train as validation
-    callbacks=[early_stop, model_checkpoint],
-    verbose=1
-)
+for epoch in range(30):
+    model.train()
+    running_loss, correct, total = 0.0, 0, 0
+    for xb, yb in train_loader:
+        xb, yb = xb.to(device), yb.to(device)
+        optimizer.zero_grad()
+        out = model(xb)
+        loss = criterion(out, yb)
+        loss.backward()
+        optimizer.step()
 
-# Evaluation
-test_loss, test_acc = model.evaluate(X_test_flat, y_test, verbose=0)
+        running_loss += loss.item() * xb.size(0)
+        correct += (out.argmax(1) == yb).sum().item()
+        total += xb.size(0)
+
+    train_loss, train_acc = running_loss / total, correct / total
+    val_loss, val_acc = evaluate(model, test_loader)
+    history['train_loss'].append(train_loss); history['val_loss'].append(val_loss)
+    history['train_acc'].append(train_acc);   history['val_acc'].append(val_acc)
+    print(f"Epoch {epoch+1}: train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
+
+    if val_loss &lt; best_val_loss:               # ModelCheckpoint(save_best_only=True)-এর মতো
+        best_val_loss = val_loss
+        patience_counter = 0
+        torch.save(model.state_dict(), 'best_mnist_model.pt')
+    else:
+        patience_counter += 1
+        if patience_counter >= patience:       # EarlyStopping(patience=5)-এর মতো
+            print(f"Early stopping at epoch {epoch+1}")
+            break
+
+test_loss, test_acc = evaluate(model, test_loader)
 print(f"Test Loss:     {test_loss:.4f}")
 print(f"Test Accuracy: {test_acc:.4f}")  # ~0.98
 
-# Prediction
-y_pred_proba = model.predict(X_test_flat[:5])   # shape: (5, 10)
-y_pred = np.argmax(y_pred_proba, axis=1)
-print("Predicted:", y_pred)
-print("Actual:   ", y_test[:5])
+model.eval()
+sample_x, sample_y = next(iter(test_loader))
+with torch.no_grad():
+    logits = model(sample_x[:5].to(device))
+    y_pred = logits.argmax(1).cpu()
+print("Predicted:", y_pred.tolist())
+print("Actual:   ", sample_y[:5].tolist())
 </code></pre>
 
     <h3>৫. Training Curves ও Analysis</h3>
@@ -135,8 +165,8 @@ print("Actual:   ", y_test[:5])
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
     # Accuracy
-    axes[0].plot(history.history['accuracy'], label='Train Accuracy', color='blue')
-    axes[0].plot(history.history['val_accuracy'], label='Val Accuracy', color='orange')
+    axes[0].plot(history['train_acc'], label='Train Accuracy', color='blue')
+    axes[0].plot(history['val_acc'], label='Val Accuracy', color='orange')
     axes[0].set_xlabel('Epoch')
     axes[0].set_ylabel('Accuracy')
     axes[0].set_title('Model Accuracy')
@@ -144,8 +174,8 @@ print("Actual:   ", y_test[:5])
     axes[0].grid(True)
 
     # Loss
-    axes[1].plot(history.history['loss'], label='Train Loss', color='blue')
-    axes[1].plot(history.history['val_loss'], label='Val Loss', color='orange')
+    axes[1].plot(history['train_loss'], label='Train Loss', color='blue')
+    axes[1].plot(history['val_loss'], label='Val Loss', color='orange')
     axes[1].set_xlabel('Epoch')
     axes[1].set_ylabel('Loss')
     axes[1].set_title('Model Loss')
@@ -162,8 +192,16 @@ plot_training_history(history)
 from sklearn.metrics import confusion_matrix, classification_report
 import seaborn as sns
 
-y_pred_all = np.argmax(model.predict(X_test_flat), axis=1)
-cm = confusion_matrix(y_test, y_pred_all)
+model.eval()
+all_preds, all_labels = [], []
+with torch.no_grad():
+    for xb, yb in test_loader:
+        preds = model(xb.to(device)).argmax(1).cpu()
+        all_preds.append(preds); all_labels.append(yb)
+y_pred_all = torch.cat(all_preds).numpy()
+y_test_all = torch.cat(all_labels).numpy()
+
+cm = confusion_matrix(y_test_all, y_pred_all)
 
 plt.figure(figsize=(8, 6))
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
@@ -174,57 +212,60 @@ plt.xlabel("Predicted Label")
 plt.savefig("confusion_matrix.png")
 plt.show()
 
-print(classification_report(y_test, y_pred_all))
+print(classification_report(y_test_all, y_pred_all))
 </code></pre>
 
     <h3>৬. Model Save ও Load</h3>
-    <pre><code># Save করার তিনটি উপায়
+    <pre><code># Save করার দুটি সাধারণ উপায়
 
-# 1. SavedModel format (recommended)
-model.save('mnist_model_savedmodel')
+# 1. Weights only (recommended)
+torch.save(model.state_dict(), 'mnist_model.pt')
 
-# 2. Keras format (.keras)
-model.save('mnist_model.keras')
-
-# 3. Weights only
-model.save_weights('mnist_weights.weights.h5')
+# 2. পুরো model object (কম portable)
+torch.save(model, 'mnist_model_full.pt')
 
 # Load করা
-loaded_model = keras.models.load_model('mnist_model.keras')
-test_loss, test_acc = loaded_model.evaluate(X_test_flat, y_test, verbose=0)
+loaded_model = SimpleMLP().to(device)
+loaded_model.load_state_dict(torch.load('mnist_model.pt'))
+loaded_model.eval()
+
+test_loss, test_acc = evaluate(loaded_model, test_loader)
 print(f"Loaded model accuracy: {test_acc:.4f}")
 
 # Model architecture দেখা
-loaded_model.summary()
+print(loaded_model)
 
 # Inference: single image
-single_image = X_test_flat[0:1]  # shape (1, 784)
-prediction = loaded_model.predict(single_image)
-predicted_class = np.argmax(prediction)
-confidence = prediction[0][predicted_class]
+single_image, _ = test_dataset[0]
+single_image = single_image.unsqueeze(0).to(device)   # batch dimension যোগ: (1, 1, 28, 28)
+with torch.no_grad():
+    logits = loaded_model(single_image)
+    probs = torch.softmax(logits, dim=1)
+    predicted_class = probs.argmax(1).item()
+    confidence = probs[0][predicted_class].item()
 print(f"Predicted: {predicted_class}, Confidence: {confidence:.2%}")
 </code></pre>
     <table>
-      <thead><tr><th>API</th><th>ব্যবহার</th><th>Return</th></tr></thead>
+      <thead><tr><th>Concept</th><th>ব্যবহার</th><th>Return</th></tr></thead>
       <tbody>
-        <tr><td>model.fit()</td><td>Training</td><td>History object (loss, accuracy per epoch)</td></tr>
-        <tr><td>model.evaluate()</td><td>Test set performance</td><td>[loss, metric1, metric2, ...]</td></tr>
-        <tr><td>model.predict()</td><td>Probability/output</td><td>NumPy array (raw predictions)</td></tr>
-        <tr><td>model.summary()</td><td>Architecture overview</td><td>Print to stdout</td></tr>
-        <tr><td>model.save()</td><td>Persistence</td><td>Saves to disk</td></tr>
-        <tr><td>keras.models.load_model()</td><td>Load saved model</td><td>Keras model object</td></tr>
+        <tr><td>training loop</td><td>Training</td><td>history dict (loss, accuracy per epoch) — নিজে বানাতে হয়</td></tr>
+        <tr><td>evaluate() (custom)</td><td>Test set performance</td><td>(loss, accuracy)</td></tr>
+        <tr><td>model(x), torch.no_grad()-এর ভিতরে</td><td>Probability/output</td><td>logits tensor</td></tr>
+        <tr><td>print(model)</td><td>Architecture overview</td><td>Print to stdout</td></tr>
+        <tr><td>torch.save(model.state_dict(), path)</td><td>Persistence</td><td>Saves to disk</td></tr>
+        <tr><td>model.load_state_dict(torch.load(path))</td><td>Load saved model</td><td>Model-কে in-place populate করে</td></tr>
       </tbody>
     </table>
 
     <h3>৭. সারসংক্ষেপ</h3>
-    <p>এই ব্লগে আমরা Keras দিয়ে শিখলাম:</p>
+    <p>এই ব্লগে আমরা PyTorch দিয়ে শিখলাম:</p>
     <ul>
-      <li>Sequential API: layer stack করার সহজ পদ্ধতি</li>
-      <li>compile(): optimizer, loss, metrics নির্ধারণ</li>
-      <li>fit(): epochs, batch_size, validation_split, callbacks</li>
-      <li>MNIST: normalize → flatten → Dense layers → softmax → 98%+ accuracy</li>
-      <li>EarlyStopping: overfitting এড়াতে</li>
-      <li>Model save/load: production deployment-এর জন্য</li>
+      <li>nn.Module: __init__-এ layer, forward()-এ computation</li>
+      <li>criterion ও optimizer: compile()-এর loss ও optimizer argument-এর বদলে</li>
+      <li>Manual training loop: zero_grad() → forward → loss → backward() → step()</li>
+      <li>MNIST: ToTensor → DataLoader → Linear layers → CrossEntropyLoss → 98%+ accuracy</li>
+      <li>Manual early stopping: best val_loss track করে checkpoint save, patience শেষ হলে থামা</li>
+      <li>Model save/load: state_dict দিয়ে production deployment-এর জন্য</li>
     </ul>
     <p>পরবর্তী ব্লগে CNN (Convolutional Neural Network) দিয়ে image classification করব — MLP-এর চেয়ে অনেক বেশি accurate।</p>
   `,

@@ -1,6 +1,6 @@
 export const cnn_3_famous_architectures = {
   title: "বিখ্যাত CNN আর্কিটেকচার: LeNet থেকে MobileNet — বিবর্তনের গল্প",
-  description: "LeNet-5, AlexNet, VGG, ResNet, Inception ও MobileNet-এর architecture, key innovations ও parameter count। ResNet-এর skip connection কেন vanishing gradient সমাধান করে, Keras-এ pre-trained ResNet50 দিয়ে inference।",
+  description: "LeNet-5, AlexNet, VGG, ResNet, Inception ও MobileNet-এর architecture, key innovations ও parameter count। ResNet-এর skip connection কেন vanishing gradient সমাধান করে, PyTorch-এ pre-trained ResNet50 দিয়ে inference।",
   date: "২৩ মে, ২০২৬",
   category: "কনভোলিউশনাল নিউরাল নেটওয়ার্ক",
   readTime: 14,
@@ -32,48 +32,79 @@ export const cnn_3_famous_architectures = {
       <li><strong>Data augmentation:</strong> Random crops, flips, color jitter</li>
       <li><strong>Local Response Normalization (LRN)</strong></li>
     </ul>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers, models
+    <pre><code>import torch
+import torch.nn as nn
 
-def lenet5(num_classes=10):
+class LeNet5(nn.Module):
     """Original LeNet-5 architecture"""
-    return models.Sequential([
-        layers.Input(shape=(32, 32, 1)),      # Original: 32x32 (MNIST padded)
-        layers.Conv2D(6,  (5,5), activation='tanh'),          # → 28x28x6
-        layers.AveragePooling2D((2,2), strides=2),            # → 14x14x6
-        layers.Conv2D(16, (5,5), activation='tanh'),          # → 10x10x16
-        layers.AveragePooling2D((2,2), strides=2),            # → 5x5x16
-        layers.Flatten(),                                      # → 400
-        layers.Dense(120, activation='tanh'),
-        layers.Dense(84,  activation='tanh'),
-        layers.Dense(num_classes, activation='softmax'),
-    ])
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.conv1 = nn.Conv2d(1, 6, 5)
+        self.tanh1 = nn.Tanh()                      # 32x32x1 → 28x28x6
+        self.pool1 = nn.AvgPool2d(2, stride=2)       # → 14x14x6
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.tanh2 = nn.Tanh()                      # → 10x10x16
+        self.pool2 = nn.AvgPool2d(2, stride=2)       # → 5x5x16
+        self.flatten = nn.Flatten()                    # → 400
+        self.fc1 = nn.Linear(400, 120)
+        self.tanh3 = nn.Tanh()
+        self.fc2 = nn.Linear(120, 84)
+        self.tanh4 = nn.Tanh()
+        self.fc3 = nn.Linear(84, num_classes)
 
-def alexnet(num_classes=1000):
+    def forward(self, x):
+        x = self.pool1(self.tanh1(self.conv1(x)))
+        x = self.pool2(self.tanh2(self.conv2(x)))
+        x = self.flatten(x)
+        x = self.tanh3(self.fc1(x))
+        x = self.tanh4(self.fc2(x))
+        return self.fc3(x)
+
+class AlexNet(nn.Module):
     """Simplified AlexNet (single GPU, no LRN)"""
-    return models.Sequential([
-        layers.Input(shape=(227, 227, 3)),
-        layers.Conv2D(96,  (11,11), strides=4, activation='relu'), # → 55x55x96
-        layers.MaxPooling2D((3,3), strides=2),                      # → 27x27x96
-        layers.Conv2D(256, (5,5),  padding='same', activation='relu'), # → 27x27x256
-        layers.MaxPooling2D((3,3), strides=2),                      # → 13x13x256
-        layers.Conv2D(384, (3,3),  padding='same', activation='relu'),
-        layers.Conv2D(384, (3,3),  padding='same', activation='relu'),
-        layers.Conv2D(256, (3,3),  padding='same', activation='relu'),
-        layers.MaxPooling2D((3,3), strides=2),                      # → 6x6x256
-        layers.Flatten(),
-        layers.Dense(4096, activation='relu'),
-        layers.Dropout(0.5),
-        layers.Dense(4096, activation='relu'),
-        layers.Dropout(0.5),
-        layers.Dense(num_classes, activation='softmax'),
-    ])
+    def __init__(self, num_classes=1000):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 96, 11, stride=4)
+        self.relu1 = nn.ReLU()                       # → 55x55x96
+        self.pool1 = nn.MaxPool2d(3, stride=2)        # → 27x27x96
+        self.conv2 = nn.Conv2d(96, 256, 5, padding=2)
+        self.relu2 = nn.ReLU()                       # → 27x27x256
+        self.pool2 = nn.MaxPool2d(3, stride=2)        # → 13x13x256
+        self.conv3 = nn.Conv2d(256, 384, 3, padding=1)
+        self.relu3 = nn.ReLU()
+        self.conv4 = nn.Conv2d(384, 384, 3, padding=1)
+        self.relu4 = nn.ReLU()
+        self.conv5 = nn.Conv2d(384, 256, 3, padding=1)
+        self.relu5 = nn.ReLU()
+        self.pool3 = nn.MaxPool2d(3, stride=2)        # → 6x6x256
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(256*6*6, 4096)
+        self.relu6 = nn.ReLU()
+        self.dropout1 = nn.Dropout(0.5)
+        self.fc2 = nn.Linear(4096, 4096)
+        self.relu7 = nn.ReLU()
+        self.dropout2 = nn.Dropout(0.5)
+        self.fc3 = nn.Linear(4096, num_classes)
 
-lenet = lenet5()
-print(f"LeNet-5 params: {lenet.count_params():,}")
+    def forward(self, x):
+        x = self.pool1(self.relu1(self.conv1(x)))
+        x = self.pool2(self.relu2(self.conv2(x)))
+        x = self.relu3(self.conv3(x))
+        x = self.relu4(self.conv4(x))
+        x = self.relu5(self.conv5(x))
+        x = self.pool3(x)
+        x = self.flatten(x)
+        x = self.dropout1(self.relu6(self.fc1(x)))
+        x = self.dropout2(self.relu7(self.fc2(x)))
+        return self.fc3(x)
 
-alex = alexnet()
-print(f"AlexNet params: {alex.count_params():,}")
+lenet = LeNet5()
+lenet_params = sum(p.numel() for p in lenet.parameters())
+print(f"LeNet-5 params: {lenet_params:,}")
+
+alex = AlexNet()
+alex_params = sum(p.numel() for p in alex.parameters())
+print(f"AlexNet params: {alex_params:,}")
 </code></pre>
 
     <h3>৩. VGG: Depth ও Simplicity</h3>
@@ -83,37 +114,60 @@ print(f"AlexNet params: {alex.count_params():,}")
       <li>Parameters: 2×(3×3×C×C) = 18C² বনাম 5×5×C×C = 25C² — ২৮% কম</li>
       <li>বেশি non-linearity (দুটি ReLU বনাম একটি)</li>
     </ul>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers, models
+    <pre><code>import torch
+import torch.nn as nn
 
-def vgg_block(x, num_convs, filters):
+class VGGBlock(nn.Module):
     """VGG block: num_convs × Conv(3x3) → MaxPool"""
-    for _ in range(num_convs):
-        x = layers.Conv2D(filters, (3,3), padding='same', activation='relu')(x)
-    x = layers.MaxPooling2D((2,2), strides=2)(x)
-    return x
+    def __init__(self, in_channels, num_convs, filters):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        self.relus = nn.ModuleList()
+        ch = in_channels
+        for _ in range(num_convs):
+            self.convs.append(nn.Conv2d(ch, filters, 3, padding=1))
+            self.relus.append(nn.ReLU())
+            ch = filters
+        self.pool = nn.MaxPool2d(2, stride=2)
 
-def vgg16(num_classes=1000, input_shape=(224, 224, 3)):
-    inputs = tf.keras.Input(shape=input_shape)
+    def forward(self, x):
+        for conv, relu in zip(self.convs, self.relus):
+            x = relu(conv(x))
+        return self.pool(x)
 
-    x = vgg_block(inputs,  2,  64)   # Block 1: → 112x112x64
-    x = vgg_block(x,       2, 128)   # Block 2: → 56x56x128
-    x = vgg_block(x,       3, 256)   # Block 3: → 28x28x256
-    x = vgg_block(x,       3, 512)   # Block 4: → 14x14x512
-    x = vgg_block(x,       3, 512)   # Block 5: → 7x7x512
+class VGG16(nn.Module):
+    def __init__(self, num_classes=1000):
+        super().__init__()
+        self.block1 = VGGBlock(3,    2,  64)   # Block 1: → 112x112x64
+        self.block2 = VGGBlock(64,   2, 128)   # Block 2: → 56x56x128
+        self.block3 = VGGBlock(128,  3, 256)   # Block 3: → 28x28x256
+        self.block4 = VGGBlock(256,  3, 512)   # Block 4: → 14x14x512
+        self.block5 = VGGBlock(512,  3, 512)   # Block 5: → 7x7x512
 
-    x = layers.Flatten()(x)          # 7*7*512 = 25088
-    x = layers.Dense(4096, activation='relu')(x)
-    x = layers.Dropout(0.5)(x)
-    x = layers.Dense(4096, activation='relu')(x)
-    x = layers.Dropout(0.5)(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
+        self.flatten = nn.Flatten()                    # 7*7*512 = 25088
+        self.fc1 = nn.Linear(25088, 4096)
+        self.relu1 = nn.ReLU()
+        self.dropout1 = nn.Dropout(0.5)
+        self.fc2 = nn.Linear(4096, 4096)
+        self.relu2 = nn.ReLU()
+        self.dropout2 = nn.Dropout(0.5)
+        self.fc3 = nn.Linear(4096, num_classes)
 
-    return models.Model(inputs, outputs)
+    def forward(self, x):
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.block5(x)
+        x = self.flatten(x)
+        x = self.dropout1(self.relu1(self.fc1(x)))
+        x = self.dropout2(self.relu2(self.fc2(x)))
+        return self.fc3(x)
 
-model = vgg16()
-print(f"VGG-16 params: {model.count_params():,}")
-# ~138 million — mostly Dense layers-এ (FC layers 102M params নেয়!)
+model = VGG16()
+total_params = sum(p.numel() for p in model.parameters())
+print(f"VGG-16 params: {total_params:,}")
+# ~138 million — mostly Linear layers-এ (FC layers 102M params নেয়!)
 </code></pre>
 
     <h3>৪. ResNet: Skip Connection ও Vanishing Gradient সমাধান</h3>
@@ -122,87 +176,102 @@ print(f"VGG-16 params: {model.count_params():,}")
     <p>Network শুধু residual F(x) শেখে (x থেকে কতটুকু পরিবর্তন হবে), পুরো mapping নয়। যদি optimal function = identity হয়, তাহলে F(x) = 0 শিখলেই হয় — সহজ।</p>
     <p><strong>Gradient flow:</strong> d(Loss)/dx = d(Loss)/d(F(x)+x) = gradient × (1 + dF/dx) — gradient সরাসরি পৌঁছায়।</p>
     <p><strong>ResNet-50 Bottleneck Block:</strong> 1×1 → 3×3 → 1×1 (channels: C → C/4 → C/4 → C)</p>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers
+    <pre><code>import torch
+import torch.nn as nn
 
-def residual_block(x, filters, stride=1):
+class ResidualBlock(nn.Module):
     """ResNet basic residual block (for ResNet-18/34)"""
-    shortcut = x
+    def __init__(self, in_channels, filters, stride=1):
+        super().__init__()
+        # Main path
+        self.conv1 = nn.Conv2d(in_channels, filters, 3, stride=stride, padding=1, bias=False)
+        self.bn1   = nn.BatchNorm2d(filters)
+        self.conv2 = nn.Conv2d(filters, filters, 3, padding=1, bias=False)
+        self.bn2   = nn.BatchNorm2d(filters)
+        self.relu  = nn.ReLU()
 
-    # Main path
-    x = layers.Conv2D(filters, (3,3), strides=stride, padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.Conv2D(filters, (3,3), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
+        # Shortcut: dimension match করতে projection লাগতে পারে
+        self.has_shortcut = stride != 1 or in_channels != filters
+        if self.has_shortcut:
+            self.shortcut_conv = nn.Conv2d(in_channels, filters, 1, stride=stride, bias=False)
+            self.shortcut_bn   = nn.BatchNorm2d(filters)
 
-    # Shortcut: dimension match করতে projection লাগতে পারে
-    if stride != 1 or shortcut.shape[-1] != filters:
-        shortcut = layers.Conv2D(filters, (1,1), strides=stride, use_bias=False)(shortcut)
-        shortcut = layers.BatchNormalization()(shortcut)
+    def forward(self, x):
+        shortcut = self.shortcut_bn(self.shortcut_conv(x)) if self.has_shortcut else x
+        y = self.relu(self.bn1(self.conv1(x)))
+        y = self.bn2(self.conv2(y))
+        # Skip connection: F(x) + x
+        return self.relu(y + shortcut)
 
-    # Skip connection: F(x) + x
-    x = layers.Add()([x, shortcut])
-    x = layers.Activation('relu')(x)
-    return x
-
-def bottleneck_block(x, filters, stride=1):
+class BottleneckBlock(nn.Module):
     """ResNet-50 bottleneck block: 1x1 → 3x3 → 1x1"""
-    shortcut = x
-    expanded = filters * 4  # Bottleneck expansion
+    def __init__(self, in_channels, filters, stride=1):
+        super().__init__()
+        expanded = filters * 4  # Bottleneck expansion
 
-    # 1x1 conv: reduce channels
-    x = layers.Conv2D(filters, (1,1), use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
+        # 1x1 conv: reduce channels
+        self.conv1 = nn.Conv2d(in_channels, filters, 1, bias=False)
+        self.bn1   = nn.BatchNorm2d(filters)
+        # 3x3 conv
+        self.conv2 = nn.Conv2d(filters, filters, 3, stride=stride, padding=1, bias=False)
+        self.bn2   = nn.BatchNorm2d(filters)
+        # 1x1 conv: expand channels back
+        self.conv3 = nn.Conv2d(filters, expanded, 1, bias=False)
+        self.bn3   = nn.BatchNorm2d(expanded)
+        self.relu  = nn.ReLU()
 
-    # 3x3 conv
-    x = layers.Conv2D(filters, (3,3), strides=stride, padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
+        # Projection shortcut
+        self.has_shortcut = stride != 1 or in_channels != expanded
+        if self.has_shortcut:
+            self.shortcut_conv = nn.Conv2d(in_channels, expanded, 1, stride=stride, bias=False)
+            self.shortcut_bn   = nn.BatchNorm2d(expanded)
 
-    # 1x1 conv: expand channels back
-    x = layers.Conv2D(expanded, (1,1), use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
+    def forward(self, x):
+        shortcut = self.shortcut_bn(self.shortcut_conv(x)) if self.has_shortcut else x
+        y = self.relu(self.bn1(self.conv1(x)))
+        y = self.relu(self.bn2(self.conv2(y)))
+        y = self.bn3(self.conv3(y))
+        return self.relu(y + shortcut)
 
-    # Projection shortcut
-    if stride != 1 or shortcut.shape[-1] != expanded:
-        shortcut = layers.Conv2D(expanded, (1,1), strides=stride, use_bias=False)(shortcut)
-        shortcut = layers.BatchNormalization()(shortcut)
-
-    x = layers.Add()([x, shortcut])
-    x = layers.Activation('relu')(x)
-    return x
-
-def build_resnet18(num_classes=10, input_shape=(32, 32, 3)):
+class ResNet18(nn.Module):
     """Small ResNet-18 for CIFAR-10"""
-    inputs = tf.keras.Input(shape=input_shape)
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.stem_conv = nn.Conv2d(3, 64, 3, padding=1, bias=False)
+        self.stem_bn   = nn.BatchNorm2d(64)
+        self.stem_relu = nn.ReLU()
 
-    x = layers.Conv2D(64, (3,3), padding='same', use_bias=False)(inputs)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
+        # 4 stages
+        self.stages = nn.ModuleList()
+        in_ch = 64
+        for filters, stride in [(64,1), (128,2), (256,2), (512,2)]:
+            self.stages.append(ResidualBlock(in_ch, filters, stride=stride))
+            self.stages.append(ResidualBlock(filters, filters, stride=1))
+            in_ch = filters
 
-    # 4 stages
-    for filters, stride in [(64,1), (128,2), (256,2), (512,2)]:
-        x = residual_block(x, filters, stride=stride)
-        x = residual_block(x, filters, stride=1)
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(512, num_classes)
 
-    x = layers.GlobalAveragePooling2D()(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
+    def forward(self, x):
+        x = self.stem_relu(self.stem_bn(self.stem_conv(x)))
+        for stage in self.stages:
+            x = stage(x)
+        x = self.pool(x).flatten(1)
+        return self.fc(x)
 
-    return tf.keras.Model(inputs, outputs)
-
-resnet18 = build_resnet18()
-print(f"Custom ResNet-18 params: {resnet18.count_params():,}")
+resnet18 = ResNet18()
+total_params = sum(p.numel() for p in resnet18.parameters())
+print(f"Custom ResNet-18 params: {total_params:,}")
 </code></pre>
 
     <h3>৫. Inception Module ও GoogLeNet</h3>
     <p><strong>GoogLeNet/Inception (Google, 2014):</strong> মূল idea — আলাদা আলাদা kernel size (1×1, 3×3, 5×5) parallel-এ চালাও, তারপর concatenate করো। Network নিজেই শিখবে কোন scale-এ কী feature দরকার।</p>
     <p>1×1 conv-এর ভূমিকা: channel reduction (bottleneck) — computational cost কমায়।</p>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers
+    <pre><code>import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-def inception_module(x, f_1x1, f_3x3_reduce, f_3x3, f_5x5_reduce, f_5x5, f_pool):
+def inception_module(x, in_channels, f_1x1, f_3x3_reduce, f_3x3, f_5x5_reduce, f_5x5, f_pool):
     """
     Inception module with dimensionality reduction
     f_1x1: 1x1 branch filters
@@ -213,28 +282,28 @@ def inception_module(x, f_1x1, f_3x3_reduce, f_3x3, f_5x5_reduce, f_5x5, f_pool)
     f_pool: 1x1 after MaxPool branch
     """
     # Branch 1: 1x1 conv
-    branch1 = layers.Conv2D(f_1x1, (1,1), padding='same', activation='relu')(x)
+    branch1 = F.relu(nn.Conv2d(in_channels, f_1x1, 1)(x))
 
     # Branch 2: 1x1 → 3x3
-    branch2 = layers.Conv2D(f_3x3_reduce, (1,1), padding='same', activation='relu')(x)
-    branch2 = layers.Conv2D(f_3x3, (3,3), padding='same', activation='relu')(branch2)
+    branch2 = F.relu(nn.Conv2d(in_channels, f_3x3_reduce, 1)(x))
+    branch2 = F.relu(nn.Conv2d(f_3x3_reduce, f_3x3, 3, padding=1)(branch2))
 
     # Branch 3: 1x1 → 5x5
-    branch3 = layers.Conv2D(f_5x5_reduce, (1,1), padding='same', activation='relu')(x)
-    branch3 = layers.Conv2D(f_5x5, (5,5), padding='same', activation='relu')(branch3)
+    branch3 = F.relu(nn.Conv2d(in_channels, f_5x5_reduce, 1)(x))
+    branch3 = F.relu(nn.Conv2d(f_5x5_reduce, f_5x5, 5, padding=2)(branch3))
 
     # Branch 4: MaxPool → 1x1
-    branch4 = layers.MaxPooling2D((3,3), strides=1, padding='same')(x)
-    branch4 = layers.Conv2D(f_pool, (1,1), padding='same', activation='relu')(branch4)
+    branch4 = nn.MaxPool2d(3, stride=1, padding=1)(x)
+    branch4 = F.relu(nn.Conv2d(in_channels, f_pool, 1)(branch4))
 
     # Concatenate all branches along channel axis
-    output = layers.Concatenate(axis=-1)([branch1, branch2, branch3, branch4])
+    output = torch.cat([branch1, branch2, branch3, branch4], dim=1)
     return output
 
 # উদাহরণ: Inception 3a module (GoogLeNet)
-inputs = tf.keras.Input(shape=(28, 28, 192))
-x = inception_module(inputs, 64, 96, 128, 16, 32, 32)
-print(f"Inception output shape: {x.shape}")
+inputs = torch.randn(1, 192, 28, 28)
+x = inception_module(inputs, 192, 64, 96, 128, 16, 32, 32)
+print(f"Inception output shape: {tuple(x.shape)}")
 # 64 + 128 + 32 + 32 = 256 channels
 </code></pre>
 
@@ -247,39 +316,54 @@ print(f"Inception output shape: {x.shape}")
     </ul>
     <p><strong>Parameter reduction:</strong> Standard: F²×C_in×C_out | Depthwise Sep: F²×C_in + C_in×C_out</p>
     <p>Reduction factor ≈ 1/C_out + 1/F² ≈ 8-9x কম parameters (3×3 kernel, 256 filters-এ)।</p>
-    <pre><code>import tensorflow as tf
-from tensorflow.keras import layers
+    <pre><code>import torch
+import torch.nn as nn
 
-def depthwise_separable_block(x, filters, stride=1):
+class DepthwiseSeparableBlock(nn.Module):
     """MobileNet-style depthwise separable conv block"""
-    # Depthwise conv: প্রতি channel-এ আলাদা 3x3 filter
-    x = layers.DepthwiseConv2D((3,3), strides=stride, padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
+    def __init__(self, in_channels, filters, stride=1):
+        super().__init__()
+        # Depthwise conv: প্রতি channel-এ আলাদা 3x3 filter
+        self.depthwise = nn.Conv2d(in_channels, in_channels, 3, stride=stride, padding=1, groups=in_channels, bias=False)
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.relu1 = nn.ReLU()
 
-    # Pointwise conv: 1x1, channel mixing
-    x = layers.Conv2D(filters, (1,1), padding='same', use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
+        # Pointwise conv: 1x1, channel mixing
+        self.pointwise = nn.Conv2d(in_channels, filters, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(filters)
+        self.relu2 = nn.ReLU()
 
-    return x
+    def forward(self, x):
+        x = self.relu1(self.bn1(self.depthwise(x)))
+        x = self.relu2(self.bn2(self.pointwise(x)))
+        return x
 
-def mobilenet_small(num_classes=10):
-    inputs = tf.keras.Input(shape=(32, 32, 3))
-    x = layers.Conv2D(32, (3,3), strides=1, padding='same', use_bias=False)(inputs)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
+class MobileNetSmall(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.stem_conv = nn.Conv2d(3, 32, 3, stride=1, padding=1, bias=False)
+        self.stem_bn   = nn.BatchNorm2d(32)
+        self.stem_relu = nn.ReLU()
 
-    configs = [(64,1), (128,2), (128,1), (256,2), (256,1)]
-    for filters, stride in configs:
-        x = depthwise_separable_block(x, filters, stride=stride)
+        configs, in_ch = [(64,1), (128,2), (128,1), (256,2), (256,1)], 32
+        self.blocks = nn.ModuleList()
+        for filters, stride in configs:
+            self.blocks.append(DepthwiseSeparableBlock(in_ch, filters, stride=stride))
+            in_ch = filters
 
-    x = layers.GlobalAveragePooling2D()(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
-    return tf.keras.Model(inputs, outputs)
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(256, num_classes)
 
-mob = mobilenet_small()
-print(f"MobileNet-small params: {mob.count_params():,}")
+    def forward(self, x):
+        x = self.stem_relu(self.stem_bn(self.stem_conv(x)))
+        for block in self.blocks:
+            x = block(x)
+        x = self.pool(x).flatten(1)
+        return self.fc(x)
+
+mob = MobileNetSmall()
+mob_params = sum(p.numel() for p in mob.parameters())
+print(f"MobileNet-small params: {mob_params:,}")
 
 # Compare: standard CNN vs MobileNet-style
 standard_params = sum([3*3*3*32, 3*3*32*64, 3*3*64*128, 3*3*128*256])
@@ -290,39 +374,63 @@ print(f"Reduction: {standard_params/mobile_params:.1f}x")
 </code></pre>
 
     <h3>৭. Pre-trained ResNet50 দিয়ে Inference</h3>
-    <p>Keras-এ ImageNet-pre-trained ResNet50 সরাসরি ব্যবহার করা যায়।</p>
-    <pre><code>import tensorflow as tf
-import numpy as np
+    <p>PyTorch/torchvision-এ ImageNet-pre-trained ResNet50 সরাসরি ব্যবহার করা যায়।</p>
+    <pre><code>import torch
+import torch.nn as nn
+from torchvision.models import resnet50, ResNet50_Weights
 
 # Pre-trained ResNet50 load (ImageNet weights)
-resnet50 = tf.keras.applications.ResNet50(
-    weights='imagenet',
-    include_top=True,     # Classifier head সহ
-    input_shape=(224, 224, 3)
-)
+weights  = ResNet50_Weights.IMAGENET1K_V2
+resnet   = resnet50(weights=weights)   # Classifier head সহ
+resnet.eval()
 
-print(f"ResNet50 params: {resnet50.count_params():,}")
+params = sum(p.numel() for p in resnet.parameters())
+print(f"ResNet50 params: {params:,}")
 
 # একটি random image দিয়ে inference
-dummy_image = np.random.randint(0, 255, (1, 224, 224, 3), dtype=np.uint8).astype(np.float32)
+dummy_image = torch.randint(0, 255, (1, 3, 224, 224), dtype=torch.uint8)
 
 # ResNet50 preprocessing
-preprocessed = tf.keras.applications.resnet50.preprocess_input(dummy_image)
-predictions   = resnet50.predict(preprocessed)
+preprocess  = weights.transforms()
+categories  = weights.meta["categories"]
+preprocessed = preprocess(dummy_image)
+with torch.no_grad():
+    predictions = resnet(preprocessed)
 
 # Top-5 predictions decode করি
-decoded = tf.keras.applications.resnet50.decode_predictions(predictions, top=5)
+top5 = torch.topk(predictions.softmax(dim=1), 5)
 print("\nTop-5 Predictions:")
-for rank, (class_id, class_name, confidence) in enumerate(decoded[0], 1):
-    print(f"  {rank}. {class_name}: {confidence:.4f}")
+for rank, (idx, confidence) in enumerate(zip(top5.indices[0], top5.values[0]), 1):
+    print(f"  {rank}. {categories[idx]}: {confidence:.4f}")
 
 # Feature extractor হিসেবে ব্যবহার (transfer learning)
-feature_extractor = tf.keras.Model(
-    inputs=resnet50.input,
-    outputs=resnet50.get_layer('avg_pool').output  # 2048-dim features
-)
-features = feature_extractor.predict(preprocessed)
-print(f"\nFeature vector shape: {features.shape}")  # (1, 2048)
+class ResNetFeatureExtractor(nn.Module):
+    """resnet50-এর সব layer রাখে, শুধু শেষের fc classifier বাদ দিয়ে"""
+    def __init__(self, base_model):
+        super().__init__()
+        self.conv1   = base_model.conv1
+        self.bn1     = base_model.bn1
+        self.relu    = base_model.relu
+        self.maxpool = base_model.maxpool
+        self.layer1  = base_model.layer1
+        self.layer2  = base_model.layer2
+        self.layer3  = base_model.layer3
+        self.layer4  = base_model.layer4
+        self.avgpool = base_model.avgpool
+
+    def forward(self, x):
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.maxpool(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        return self.avgpool(x)
+
+feature_extractor = ResNetFeatureExtractor(resnet)
+with torch.no_grad():
+    features = feature_extractor(preprocessed).flatten(1)   # 2048-dim features
+print(f"\nFeature vector shape: {tuple(features.shape)}")  # (1, 2048)
 </code></pre>
   `,
 };
